@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>Aws Ec2にbot環境を移行する | 週末自由研究</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="自動トレードBOTを自宅のWindowsマシンで動かしていた。Windowsで勝手が知れているし、vscodeでデバッグもできるので使用していたが、2週間に1回くらいの頻度で勝手に再起動するという現象が発生。自作PCでサーバー用途で作っていないので、安定性やら電気代やら不安になってきた。ということで、AWS環境に移行した。下記は移行作業の備忘録。 ec2インスタンスを作成するずいぶん前に一つインス">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Aws Ec2にbot環境を移行する">
+<meta property="og:url" content="https://sawara7.github.io/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/index.html">
+<meta property="og:site_name" content="週末自由研究">
+<meta property="og:description" content="自動トレードBOTを自宅のWindowsマシンで動かしていた。Windowsで勝手が知れているし、vscodeでデバッグもできるので使用していたが、2週間に1回くらいの頻度で勝手に再起動するという現象が発生。自作PCでサーバー用途で作っていないので、安定性やら電気代やら不安になってきた。ということで、AWS環境に移行した。下記は移行作業の備忘録。 ec2インスタンスを作成するずいぶん前に一つインス">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:image" content="https://s3-ap-northeast-1.amazonaws.com/samurai-blog-media/blog/wp-content/uploads/2019/01/ubuntu_nodejs.jpg">
+<meta property="og:image" content="https://www.t3a.jp/wp-content/uploads/2018/11/set_timezone_top.jpg">
+<meta property="article:published_time" content="2020-02-15T03:33:41.000Z">
+<meta property="article:modified_time" content="2026-10-11T00:40:57.072Z">
+<meta property="article:author" content="sawara7">
+<meta property="article:tag" content="aws">
+<meta property="article:tag" content="ubuntu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://s3-ap-northeast-1.amazonaws.com/samurai-blog-media/blog/wp-content/uploads/2019/01/ubuntu_nodejs.jpg">
+  
+    <link rel="alternate" href="/atom.xml" title="週末自由研究" type="application/atom+xml">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+    
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-source-code-pro@0.0.71/index.min.css">
+
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+  
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fork-awesome@1.2.0/css/fork-awesome.min.css">
+
+<!-- hexo injector head_end start --><style>
+.referral-card{border:1px solid #d8dde3;border-radius:8px;padding:16px 18px;margin:28px 0;background:#fbfcfd}
+.referral-badge{display:inline-block;font-size:11px;line-height:1;padding:4px 7px;border-radius:3px;background:#55606b;color:#fff;letter-spacing:.04em}
+.referral-name{margin:10px 0 0;font-weight:700;font-size:17px}
+.referral-reward{margin-left:8px;font-weight:400;font-size:13px;color:#0b7a46}
+.referral-note{margin:6px 0 0;font-size:14px;color:#55606b}
+.referral-cta{display:inline-block;margin-top:14px;padding:9px 18px;border-radius:5px;background:#1668c1;color:#fff;font-size:14px;font-weight:700;text-decoration:none}
+.referral-cta:hover{background:#12559f}
+.referral-disclosure{border-left:3px solid #c9ced4;padding:8px 12px;margin:0 0 22px;font-size:13px;color:#55606b}
+@media (prefers-color-scheme:dark){
+.referral-card{background:#1b1f24;border-color:#343b43}
+.referral-note,.referral-disclosure{color:#9aa4ae}
+}
+</style><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">週末自由研究</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">This Week I Learned</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"><span class="fa fa-bars"></span></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+        
+          <a class="nav-icon" href="/atom.xml" title="RSSフィード"><span class="fa fa-rss"></span></a>
+        
+        <a class="nav-icon nav-search-btn" title="検索"><span class="fa fa-search"></span></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="検索"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://sawara7.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="post-aws-ec2にbot環境を移行する" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/" class="article-date">
+  <time class="dt-published" datetime="2020-02-15T03:33:41.000Z" itemprop="datePublished">2020-02-15</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="p-name article-title" itemprop="headline name">
+      Aws Ec2にbot環境を移行する
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>自動トレードBOTを自宅のWindowsマシンで動かしていた。<br>Windowsで勝手が知れているし、vscodeでデバッグもできるので使用していたが、<br>2週間に1回くらいの頻度で勝手に再起動するという現象が発生。<br>自作PCでサーバー用途で作っていないので、安定性やら電気代やら不安になってきた。<br>ということで、AWS環境に移行した。<br>下記は移行作業の備忘録。</p>
+<h1 id="ec2インスタンスを作成する"><a href="#ec2インスタンスを作成する" class="headerlink" title="ec2インスタンスを作成する"></a>ec2インスタンスを作成する</h1><p>ずいぶん前に一つインスタンスを作っていた。<br>ちょうど1年間の無料枠が切れており、今月の請求額が増えていた・・・<br>不要なファイルが溜まっているようなので、インスタンスを作り直すことにした。<br>今更気づいたが、無料枠ってインスタンスつくるたびについてくる？？<br>じゃあ毎年インスタンス作りなおせば無料なの？？<br>ubuntu 18.04</p>
+<h1 id="node-jsとnpmをインストールする"><a href="#node-jsとnpmをインストールする" class="headerlink" title="node.jsとnpmをインストールする"></a>node.jsとnpmをインストールする</h1><p><a target="_blank" rel="noopener" href="https://www.sejuku.net/blog/84238"><img src="https://s3-ap-northeast-1.amazonaws.com/samurai-blog-media/blog/wp-content/uploads/2019/01/ubuntu_nodejs.jpg">UbuntuにNode.jsを導入する方法3つを目的別に紹介！(18.04LTS) | 侍エンジニア塾ブログ（Samurai Blog） - プログラミング入門者向けサイトUbuntuにNode.jsを導入したい と思っている方はいませんか？しかし、いざ調べてみるとやり方が色々あって、自分の求めているものがどれなのかいまいちわかりにくい時ってありますよね。 そこで、本日は、Ubuntu18.04LTSにNode.jsを導入するということを目的に、 …</a></p>
+<h1 id="node-jsプログラムをバックグラウンドで実行する"><a href="#node-jsプログラムをバックグラウンドで実行する" class="headerlink" title="node.jsプログラムをバックグラウンドで実行する"></a>node.jsプログラムをバックグラウンドで実行する</h1><p>通常の実行方法だと（node xxx）<br>コンソールを終了すると（ubuntuからログアウトすると）nodejsスクリプトが終了してしまう。</p>
+<p>バックグラウンドでプログラムを実行したいときは、nohupコマンドを使う。<br><code>sudo nohup node main &amp;</code><br>でバックグラウンドでnode.jsスクリプトを実行する<br>プロセスが実行しているかどうかは<br><code>ps -fu root</code><br>で確認する<br>プロセスを終了したいときは<br><code>kill プロセスID</code><br>で終了する<br>※二重起動して、API使用制限オーバーしてBANされたりしたらやだなぁ<br>API使用状況を確認できる機能を実装したい</p>
+<h1 id="ubuntuの時間を日本時間にする"><a href="#ubuntuの時間を日本時間にする" class="headerlink" title="ubuntuの時間を日本時間にする"></a>ubuntuの時間を日本時間にする</h1><p>ubuntuの場合は、下記のようにリンクを張り替えるだけでいけた。<br><code>ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime</code></p>
+<p><a target="_blank" rel="noopener" href="https://www.t3a.jp/blog/infrastructure/set-timezone/#outline__2_3"><img src="https://www.t3a.jp/wp-content/uploads/2018/11/set_timezone_top.jpg">[Linux]タイムゾーン(Timezone)をUTCから日本標準時(JST)に変更する目次 1. タイムゾーン(Timezone)の初期設定は世界標準時(UTC)2. タイムゾーン(Timezone)の設定方法2.1. [Amazon Linux]タイムゾーン(Timezone)の設定変更2.1.1. 実行するサンプルコマン</a></p>
+
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://sawara7.github.io/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/" data-id="cmv33kyok000563od3aok98j9" data-title="Aws Ec2にbot環境を移行する" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/aws/" rel="tag">aws</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/ubuntu/" rel="tag">ubuntu</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2020/02/29/github%E3%81%A7CI%E6%A7%8B%E7%AF%89/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">次の記事</strong>
+      <div class="article-nav-title">
+        
+          githubでCI構築
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2020/02/05/hexo%E3%81%A7tweet%E3%82%84%E5%A4%96%E9%83%A8%E3%83%96%E3%83%AD%E3%82%B0%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%80%E6%96%B9%E6%B3%95/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">前の記事</strong>
+      <div class="article-nav-title">Hexoでtweetや外部ブログを埋め込む方法</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">タグ</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/API/" rel="tag">API</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/EDINET/" rel="tag">EDINET</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Firebase/" rel="tag">Firebase</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/HEXO/" rel="tag">HEXO</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/JSON/" rel="tag">JSON</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/TypeScript/" rel="tag">TypeScript</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/aws/" rel="tag">aws</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/ubuntu/" rel="tag">ubuntu</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" rel="tag">ポートフォリオ</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%8A%95%E8%B3%87/" rel="tag">投資</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%A0%AA/" rel="tag">株</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">タグクラウド</h3>
+    <div class="widget tagcloud">
+      <a href="/tags/API/" style="font-size: 10px;">API</a> <a href="/tags/EDINET/" style="font-size: 10px;">EDINET</a> <a href="/tags/Firebase/" style="font-size: 10px;">Firebase</a> <a href="/tags/HEXO/" style="font-size: 20px;">HEXO</a> <a href="/tags/JSON/" style="font-size: 10px;">JSON</a> <a href="/tags/TypeScript/" style="font-size: 20px;">TypeScript</a> <a href="/tags/aws/" style="font-size: 10px;">aws</a> <a href="/tags/ubuntu/" style="font-size: 10px;">ubuntu</a> <a href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" style="font-size: 10px;">ポートフォリオ</a> <a href="/tags/%E6%8A%95%E8%B3%87/" style="font-size: 10px;">投資</a> <a href="/tags/%E6%A0%AA/" style="font-size: 20px;">株</a>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">アーカイブ</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/08/">8月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/07/">7月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/02/">2月 2020</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">最近の投稿</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/">2020年8月のポートフォリオ</a>
+          </li>
+        
+          <li>
+            <a href="/2020/07/07/EDINET/">EDINET</a>
+          </li>
+        
+          <li>
+            <a href="/2020/07/05/%E6%A0%AA%E5%BC%8F%E4%BC%9A%E7%A4%BE%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6%E8%AA%BF%E3%81%B9%E3%81%9F/">株式会社について調べた</a>
+          </li>
+        
+          <li>
+            <a href="/2020/02/29/github%E3%81%A7CI%E6%A7%8B%E7%AF%89/">githubでCI構築</a>
+          </li>
+        
+          <li>
+            <a href="/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/">Aws Ec2にbot環境を移行する</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2026 sawara7<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.6.4.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>
