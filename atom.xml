@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <author>
+    <name>sawara7</name>
+  </author>
+  <generator uri="https://hexo.io/">Hexo</generator>
+  <id>https://sawara7.github.io/</id>
+  <link href="https://sawara7.github.io/" rel="alternate"/>
+  <link href="https://sawara7.github.io/atom.xml" rel="self"/>
+  <rights>All rights reserved 2026, sawara7</rights>
+  <subtitle>This Week I Learned</subtitle>
+  <title>週末自由研究</title>
+  <updated>2026-10-18T05:16:50.893Z</updated>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="API" scheme="https://sawara7.github.io/tags/API/"/>
+    <category term="bitbank" scheme="https://sawara7.github.io/tags/bitbank/"/>
+    <category term="JavaScript" scheme="https://sawara7.github.io/tags/JavaScript/"/>
+    <content>
+      <![CDATA[<p>bitbankの全ペアの価格を一覧で見たくなって作った。<br>結果として<strong>サーバ側のコードが1行も要らなかった</strong>ので、その話を書く。</p><h2 id="バックエンドが要らない理由"><a href="#バックエンドが要らない理由" class="headerlink" title="バックエンドが要らない理由"></a>バックエンドが要らない理由</h2><p>bitbankのpublic APIには、全ペアのtickerを1回で返すエンドポイントがある。</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">https://public.bitbank.cc/tickers</span><br></pre></td></tr></table></figure><p>これが62ペア分をまとめて返してくる。しかも<br><code>Access-Control-Allow-Origin: *</code> が付いている。</p><p>つまり<strong>ブラウザから直接叩ける</strong>。CORSで弾かれないので、プロキシも、<br>バックエンドのポーリングも、APIキーの保管も要らない。<br>コンテナがやることは静的ファイルを配るだけになった。</p><p>取引所のAPIは普通CORSを許可していない（キーを使うprivate APIなら当然そうあるべき）<br>が、ここは公開情報なので開いている。この一点で構成がまるごと簡単になった。</p><h2 id="ポーリングはクライアント側で"><a href="#ポーリングはクライアント側で" class="headerlink" title="ポーリングはクライアント側で"></a>ポーリングはクライアント側で</h2><p>更新間隔は3秒・5秒・10秒・30秒・停止から選べるようにした。</p><p>大事なのは<strong>タブが非表示のあいだは止める</strong>こと。</p><figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="variable language_">document</span>.<span class="title function_">addEventListener</span>(<span class="string">&#x27;visibilitychange&#x27;</span>, <span class="function">() =&gt;</span> &#123;</span><br><span class="line">  <span class="keyword">if</span> (<span class="variable language_">document</span>.<span class="property">hidden</span>) <span class="title function_">stop</span>();</span><br><span class="line">  <span class="keyword">else</span> <span class="title function_">start</span>();</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure><p>開きっぱなしのタブが、見られてもいないのに3秒おきにAPIを叩き続けるのは<br>行儀が悪い。相手の公開APIを使わせてもらっている以上、ここはやっておく。</p><p>選んだ間隔・通貨フィルタ・検索文字列・ソート列は<code>localStorage</code>に入れてあるので、<br>開き直しても前回の状態になる。</p><h2 id="「出来高」でソートしてはいけない"><a href="#「出来高」でソートしてはいけない" class="headerlink" title="「出来高」でソートしてはいけない"></a>「出来高」でソートしてはいけない</h2><p>表に出している列はこれ。</p><table><thead><tr><th>列</th><th>中身</th></tr></thead><tbody><tr><td>最終 &#x2F; 買値 &#x2F; 売値 &#x2F; 高値 &#x2F; 安値</td><td>取引所が返す精度のまま</td></tr><tr><td>前日比</td><td><code>(last − open) / open</code></td></tr><tr><td>出来高</td><td><strong>基軸通貨</strong>建ての数量</td></tr><tr><td>代金</td><td><code>出来高 × 最終値</code> &#x3D; <strong>決済通貨</strong>建ての金額</td></tr></tbody></table><p>既定のソートは<strong>代金</strong>にしてある。出来高にしていない理由は、<br>出来高が銘柄をまたいで比較できないから。</p><p>92 BTCと9,989 GALAは、どちらも「出来高」だが意味がまったく違う。<br>前者は数千万円、後者は数万円かもしれない。数量をそのまま並べると、<br>単価の安い銘柄が上に来るだけの無意味な順序になる。</p><p>最終値を掛けて金額に揃えると、はじめて「どのペアが実際に動いているか」が<br>分かる表になる。</p><h2 id="サブパスで配るときの罠"><a href="#サブパスで配るときの罠" class="headerlink" title="サブパスで配るときの罠"></a>サブパスで配るときの罠</h2><p>このページはリバースプロキシの<code>/ticker/</code>以下に置いている。<br>プレフィックスを剥がしてから転送しているので、中のnginxは自分が<br>サブパスにいることを知らない。</p><p>このとき、<strong>アセットの参照を絶対パスで書くと壊れる</strong>。</p><figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- ダメ。ホストのルートを見にいく --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">&quot;/app.js&quot;</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="comment">&lt;!-- これ --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">&quot;app.js&quot;</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br></pre></td></tr></table></figure><p>ローカルでルートに置いて開発していると気づかないので、デプロイして初めて<br>真っ白なページに出会うことになる。</p><h2 id="できたもの"><a href="#できたもの" class="headerlink" title="できたもの"></a>できたもの</h2><p>単一のHTMLファイルで、アセットは全部インライン。<br>nginxのコンテナに置いてあるだけ。サーバ側の状態を持たないので、<br>落ちても再起動すれば終わり。</p><p>bitbankのAPIは自動売買botを書くのにも素直で、この価格ボードも<br><a href="/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/">グリッドbot</a>も同じAPIを使っている。<br>ドキュメントが整っていて、公開情報はCORSが開いているというのは、<br>個人で何か作るときにはかなり効く。</p>]]>
+    </content>
+    <id>https://sawara7.github.io/2026/10/18/bitbank%E5%85%A8%E9%8A%98%E6%9F%84%E3%81%AE%E4%BE%A1%E6%A0%BC%E3%83%9C%E3%83%BC%E3%83%89%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F/</id>
+    <link href="https://sawara7.github.io/2026/10/18/bitbank%E5%85%A8%E9%8A%98%E6%9F%84%E3%81%AE%E4%BE%A1%E6%A0%BC%E3%83%9C%E3%83%BC%E3%83%89%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F/"/>
+    <published>2026-10-18T11:40:00.000Z</published>
+    <summary>
+      <![CDATA[<p>bitbankの全ペアの価格を一覧で見たくなって作った。<br>結果として<strong>サーバ側のコードが1行も要らなかった</strong>ので、その話を書く。</p>
+<h2 id="バックエンドが要らない理由"><a href="#バックエンドが要らない理由" cl]]>
+    </summary>
+    <title>bitbank全銘柄の価格ボードをバックエンド無しで作った</title>
+    <updated>2026-10-18T05:16:50.893Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="TypeScript" scheme="https://sawara7.github.io/tags/TypeScript/"/>
+    <category term="Docker" scheme="https://sawara7.github.io/tags/Docker/"/>
+    <category term="bot" scheme="https://sawara7.github.io/tags/bot/"/>
+    <category term="リファクタリング" scheme="https://sawara7.github.io/tags/%E3%83%AA%E3%83%95%E3%82%A1%E3%82%AF%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0/"/>
+    <content>
+      <![CDATA[<p>bitbankのグリッドbotは、長いあいだ7つのリポジトリに分かれていた。<br>共通処理をライブラリとして切り出すのは良い習慣だと思っていたのだが、<br>個人開発の規模でやると<strong>デプロイのたびに面倒を払う</strong>ことになっていた。</p><p>まとめた結果がこれ。</p><table><thead><tr><th>元のリポジトリ</th><th>移動先</th><th>行数</th></tr></thead><tbody><tr><td><code>bot-framework</code></td><td><code>src/framework/</code></td><td>921</td></tr><tr><td><code>node-bitbankcc</code></td><td><code>src/bitbank/</code></td><td>595</td></tr><tr><td><code>bot-bitbank</code></td><td><code>src/bot/</code></td><td>428</td></tr><tr><td><code>utils-trade</code></td><td><code>src/trade/</code></td><td>283</td></tr><tr><td><code>utils-mongodb</code></td><td><code>src/db/</code></td><td>272</td></tr><tr><td><code>utils-general</code></td><td><code>src/utils/</code></td><td>198</td></tr><tr><td><code>logic-namping</code></td><td><code>src/logic/</code></td><td>101</td></tr></tbody></table><p>合計2,800行。1つのリポジトリに収まる量だった。</p><h2 id="何が面倒だったか"><a href="#何が面倒だったか" class="headerlink" title="何が面倒だったか"></a>何が面倒だったか</h2><p>依存をこう書いていた。</p><figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">&quot;dependencies&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;bot-framework&quot;</span><span class="punctuation">:</span> <span class="string">&quot;github:sawara7/bot-framework&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;utils-trade&quot;</span><span class="punctuation">:</span> <span class="string">&quot;github:sawara7/utils-trade&quot;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure><p>privateリポジトリをgithub:で参照すると、<code>npm install</code>に<strong>認証が要る</strong>。<br>ローカルでは自分のSSH鍵が効くので気づかないが、Dockerのビルドコンテナの中には<br>鍵が無い。だからビルドのたびに鍵を渡す必要があった。</p><figure class="highlight dockerfile"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">RUN</span><span class="language-bash"> --mount=<span class="built_in">type</span>=ssh npm ci</span></span><br></pre></td></tr></table></figure><figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">build:</span></span><br><span class="line">  <span class="attr">ssh:</span> <span class="string">default</span></span><br></pre></td></tr></table></figure><p>これでCIも面倒になるし、ビルド環境を変えるたびに鍵の受け渡しを考えることになる。<br><strong><code>github:sawara7/*</code>の依存が全部消えた結果、<code>--mount=type=ssh</code>も<code>build.ssh</code>も<br>要らなくなった。</strong> ビルドがただの<code>npm ci</code>に戻った。</p><p>ライブラリを分けること自体が悪いのではなく、「他人も使うのか？」を考えずに<br>分けたのが良くなかった。実際には全部このbotからしか呼ばれていなかった。</p><h2 id="ついでに見つかったバグ"><a href="#ついでに見つかったバグ" class="headerlink" title="ついでに見つかったバグ"></a>ついでに見つかったバグ</h2><p>1か所に集めると全体を通して読めるようになって、長年気づかなかったバグが出てきた。<br>いくつか挙げる。</p><h3 id="10-pricePrecision-が累乗ではなかった"><a href="#10-pricePrecision-が累乗ではなかった" class="headerlink" title="10^pricePrecision が累乗ではなかった"></a><code>10^pricePrecision</code> が累乗ではなかった</h3><figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> precision = <span class="number">10</span> ^ pricePrecision;</span><br></pre></td></tr></table></figure><p>JavaScriptの<code>^</code>は<strong>ビットXOR</strong>であって累乗ではない。<code>10^0</code>は10、<code>10^2</code>は8になる。<br>累乗は<code>**</code>か<code>Math.pow()</code>。</p><p>この値はtickerの精度として渡されていた。ずっと動いて「いた」のは、<br>結果的に妙な値でも処理が通ってしまっていたから。累乗のつもりで<code>^</code>を書くのは<br>他言語から来ると本当にやりがちで、しかもエラーにならないので残り続ける。</p><h3 id="bidとaskが逆だった"><a href="#bidとaskが逆だった" class="headerlink" title="bidとaskが逆だった"></a>bidとaskが逆だった</h3><figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">bid</span>: mid + precision,</span><br><span class="line"><span class="attr">ask</span>: mid - precision,</span><br></pre></td></tr></table></figure><p>買値が売値より<strong>高い</strong>状態になっていた。損切りの方向判定が反転する。</p><p>これが表に出ていなかったのは、<code>losscutRate: 0</code>で損切りロジックそのものが<br>動いていなかったから。損切りを有効にした瞬間に踏む地雷だった。<br>ついでに、実際のスプレッドを捨ててmid±precisionに潰していたのもやめて、<br>板をそのまま使うようにした。</p><h3 id="決済注文が建玉側の注文種別を書いていた"><a href="#決済注文が建玉側の注文種別を書いていた" class="headerlink" title="決済注文が建玉側の注文種別を書いていた"></a>決済注文が建玉側の注文種別を書いていた</h3><p><code>getCloseOrderRequest</code>の中で<code>openOrderType</code>を読んでいた。<br><code>getOpenOrderRequest</code>からのコピペで、変数名だけ直し忘れたやつ。</p><h3 id="最小ロットのチェックが存在しなかった"><a href="#最小ロットのチェックが存在しなかった" class="headerlink" title="最小ロットのチェックが存在しなかった"></a>最小ロットのチェックが存在しなかった</h3><p>設定に<code>minSize</code>という項目があるのに、<strong>誰も読んでいなかった</strong>。<br>予算が足りない段では数量が0に切り捨てられ、取引所に弾かれて<code>success: false</code>が<br>返るだけ。理由はログに残らない。</p><p>症状としては「なぜか上の段だけ約定しない」という形で出る。原因が分からないまま<br>何年か放置していた。発注前にチェックして、足りなければ必要な予算とあわせて<br>ログに出すようにした。UIにも「全段が最小ロットを満たすのに必要な予算」を<br>表示するようにしている。</p><h3 id="予算取得が毎ループ走っていて、失敗すると全部止まっていた"><a href="#予算取得が毎ループ走っていて、失敗すると全部止まっていた" class="headerlink" title="予算取得が毎ループ走っていて、失敗すると全部止まっていた"></a>予算取得が毎ループ走っていて、失敗すると全部止まっていた</h3><p>残高取得はprivate APIを1回、保有銘柄ごとにpublic APIを1回呼ぶ。<br>これがbotループの<strong>毎イテレーション</strong>で、しかも約定検知より<strong>前</strong>にあった。</p><p>つまり、保有している無関係な銘柄のticker取得が一度失敗しただけで、<br>その回の約定検知ごとスキップされていた。60秒キャッシュにして、<br>失敗時は直近の値を使い続けるようにした。</p><h3 id="損益に約定価格を使っていなかった"><a href="#損益に約定価格を使っていなかった" class="headerlink" title="損益に約定価格を使っていなかった"></a>損益に約定価格を使っていなかった</h3><p>決済済みの往復の損益に<code>getUnrealizedPL</code>を使っていた。これは<code>ticker.bid</code>、<br>つまり<strong>その時点の板の価格</strong>で評価する関数で、建玉の評価には正しいが、<br>決済済みの取引に使うと「約定を検知したときに相場がたまたまどこにいたか」を<br>記録することになる。</p><p>決済の実際の約定値は<code>pos.closePrice</code>に入っているのに使われていなかった。<br>2つの約定価格から計算する<code>getRealizedPL</code>を足した。</p><p>あわせて、<code>cumulativePL</code>に純額しか入っていなかったのも直した。これだと<br>「グリッドが稼いだ分」と「手数料で払った分」が分離できない。<br>粗利・建玉手数料・決済手数料・建値・決済値・数量・段番号を別々に保存している。<br>古いドキュメントも読めるよう、追加したフィールドは全部optionalにした。</p><h2 id="まとめ"><a href="#まとめ" class="headerlink" title="まとめ"></a>まとめ</h2><p>リポジトリを分けると、<strong>全体を通して読む機会が無くなる</strong>。<br>境界をまたいだバグ（bidとaskが逆、使われていない設定項目）は、<br>分かれている限り見つからない。</p><p>2,800行なら1つでいい、というのが結論。</p><p>次は、このbotが叩いているbitbankのAPIで作った価格ボードの話を書く。</p>]]>
+    </content>
+    <id>https://sawara7.github.io/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/</id>
+    <link href="https://sawara7.github.io/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/"/>
+    <published>2026-10-17T13:10:00.000Z</published>
+    <summary>
+      <![CDATA[<p>bitbankのグリッドbotは、長いあいだ7つのリポジトリに分かれていた。<br>共通処理をライブラリとして切り出すのは良い習慣だと思っていたのだが、<br>個人開発の規模でやると<strong>デプロイのたびに面倒を払う</strong>ことになっていた。</p>
+<p]]>
+    </summary>
+    <title>7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった</title>
+    <updated>2026-10-18T05:16:27.851Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="Docker" scheme="https://sawara7.github.io/tags/Docker/"/>
+    <category term="bot" scheme="https://sawara7.github.io/tags/bot/"/>
+    <category term="さくらのVPS" scheme="https://sawara7.github.io/tags/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS/"/>
+    <category term="Caddy" scheme="https://sawara7.github.io/tags/Caddy/"/>
+    <content>
+      <![CDATA[<p>6年前に<a href="/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/">AWS EC2にbot環境を移行する</a>という記事を書いた。<br>あれ以来ずっとEC2で動かしていたが、台数が増えるにつれて毎月の請求が効いてきたので、<br>さくらのVPSの月額千円ちょっとのプランに引っ越した。メモリ1GBでbot3本とレジストリと<br>リバースプロキシが全部載っている。</p><p>せっかくなので、ただ移すのではなく構成を整理した。</p><h2 id="構成"><a href="#構成" class="headerlink" title="構成"></a>構成</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">インターネット</span><br><span class="line">   │ 443</span><br><span class="line">   ▼</span><br><span class="line"> Caddy（TLS終端・振り分け）</span><br><span class="line">   ├─ /ticker/ → 価格ボード（静的）</span><br><span class="line">   ├─ /bot/    → グリッドbotの設定UI</span><br><span class="line">   └─ /        → 自前のDockerレジストリ</span><br></pre></td></tr></table></figure><p>全部Dockerコンテナで、<code>edge</code> という名前のDockerネットワークを1つ作って、その上に乗せている。</p><h2 id="Caddyにした理由"><a href="#Caddyにした理由" class="headerlink" title="Caddyにした理由"></a>Caddyにした理由</h2><p>nginxでもよかったが、<strong>Let’s Encryptの証明書取得と更新を何も書かずにやってくれる</strong>のが<br>決め手だった。設定ファイルにドメインを書くだけで証明書が降ってくる。certbotのcronも<br>要らないし、更新忘れで落とすこともない。</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">&#123;$SITE_DOMAIN&#125; &#123;</span><br><span class="line">handle_path /ticker/* &#123;</span><br><span class="line">reverse_proxy bitbank-ticker:80</span><br><span class="line">&#125;</span><br><span class="line">handle_path /bot/* &#123;</span><br><span class="line">reverse_proxy bitbank-grid-api:3000</span><br><span class="line">&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure><p>メモリは15MBしか食っていない。1GBのVPSではこれが地味に効く。</p><h2 id="ハマったところ1-さくらのパケットフィルタ"><a href="#ハマったところ1-さくらのパケットフィルタ" class="headerlink" title="ハマったところ1: さくらのパケットフィルタ"></a>ハマったところ1: さくらのパケットフィルタ</h2><p>最初、証明書の取得が延々と失敗した。Let’s Encryptからは<br><code>Timeout during connect (likely firewall problem)</code> が返ってくる。</p><p>原因は<strong>さくらのコントロールパネル側のパケットフィルタ</strong>だった。VPS内のufwではなく、<br>その外側にもう一枚フィルタがあって、初期状態では22番（SSH）しか開いていない。<br>80と443を開けたら一発で通った。</p><p>ufwのほうは有効になっているが、Dockerが公開するポートはufwを迂回するので、<br>こちらにはルールを足す必要がなかった。これも最初は混乱した。</p><h2 id="ハマったところ2-ファイアウォールかレート制限かの切り分け"><a href="#ハマったところ2-ファイアウォールかレート制限かの切り分け" class="headerlink" title="ハマったところ2: ファイアウォールかレート制限かの切り分け"></a>ハマったところ2: ファイアウォールかレート制限かの切り分け</h2><p>Let’s Encryptには<strong>取得回数の制限</strong>があり、失敗を繰り返すと一定時間締め出される。<br>なので「ファイアウォールで届いていない」のか「レート制限で弾かれている」のかを、<br>取得を試さずに判定したかった。</p><p>これはポートを直接叩けば分かる。Caddyを止めた状態で接続して、</p><ul><li><strong>接続拒否（connection refused）</strong> が即座に返る → ポートは開いている。単に何も<br>listenしていないだけ</li><li><strong>タイムアウト</strong> → パケットがそもそも届いていない。ファイアウォール</li></ul><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> socket</span><br><span class="line">s = socket.socket()</span><br><span class="line">s.settimeout(<span class="number">8</span>)</span><br><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    s.connect((<span class="string">&quot;&lt;自分のVPSのホスト名&gt;&quot;</span>, <span class="number">80</span>))</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;listening&quot;</span>)</span><br><span class="line"><span class="keyword">except</span> socket.timeout:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;BLOCKED&quot;</span>)          <span class="comment"># ファイアウォール</span></span><br><span class="line"><span class="keyword">except</span> ConnectionRefusedError:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;open, nothing listening&quot;</span>)   <span class="comment"># 届いている</span></span><br></pre></td></tr></table></figure><p>「拒否」と「無応答」は人間には同じ失敗に見えるが、原因は正反対なので、<br>ここを区別できると無駄なACMEの試行を使わずに済む。</p><h2 id="ハマったところ3-Caddyのreloadは黙って失敗する"><a href="#ハマったところ3-Caddyのreloadは黙って失敗する" class="headerlink" title="ハマったところ3: Caddyのreloadは黙って失敗する"></a>ハマったところ3: Caddyのreloadは黙って失敗する</h2><p>設定ファイルが壊れていると、reloadは<strong>何も言わずに現行設定のまま</strong>になる。<br>エラーで止まってくれないので、直したつもりで直っていないことに気づけない。<br>必ずvalidateを挟む。</p><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">docker <span class="built_in">exec</span> edge-caddy caddy validate --config /etc/caddy/Caddyfile \</span><br><span class="line">  &amp;&amp; docker <span class="built_in">exec</span> edge-caddy caddy reload --config /etc/caddy/Caddyfile</span><br></pre></td></tr></table></figure><h2 id="自前のDockerレジストリ"><a href="#自前のDockerレジストリ" class="headerlink" title="自前のDockerレジストリ"></a>自前のDockerレジストリ</h2><p>botのイメージをDocker Hubに置くのをやめて、VPS内にレジストリを立てた。<br>使ったのは<a href="https://zotregistry.dev/">Zot</a>。公式の<code>registry:3</code>ではなくZotにしたのは、</p><ul><li><strong>Web UIがイメージに同梱されている</strong>（<code>registry:3</code>にはUIが無い）</li><li><strong>ガベージコレクションが自動で走る</strong>（<code>registry garbage-collect</code>を手で叩かなくていい）</li></ul><p>の2点。メモリ上限を256MBにしてあり、普段は57MBくらいで落ち着いている。</p><p>Dockerクライアントは常に<code>/v2/...</code>を要求してきて、プレフィックスを設定する手段が<br>無いので、レジストリだけはホストのルートに置く必要がある。他のサービスを<br>サブパスに逃がして、残り全部をレジストリに流す形にした。</p><h2 id="サブパスに置くときの注意"><a href="#サブパスに置くときの注意" class="headerlink" title="サブパスに置くときの注意"></a>サブパスに置くときの注意</h2><p><code>handle_path</code>はプレフィックスを剥がしてから転送するので、中のアプリは<br>自分がサブパスにいることを知らない。これは楽なのだが、<strong>ページ内のアセット参照を<br>相対パスにしておかないと壊れる</strong>。<code>/digest.json</code>と書くとホストのルートを<br>見にいってしまうので、<code>digest.json</code>と書く。</p><p>あと地味な罠として、Caddyの<code>redir</code>は<code>[&lt;matcher&gt;] &lt;to&gt; [&lt;code&gt;]</code>という引数順で、<br>先頭がスラッシュで始まるとそれを<strong>マッチャとして</strong>解釈する。<br><code>/ticker</code>を<code>/ticker/</code>に飛ばしたいときは、マッチャを明示する必要がある。</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">redir /ticker /ticker/ 308</span><br></pre></td></tr></table></figure><h2 id="移してみて"><a href="#移してみて" class="headerlink" title="移してみて"></a>移してみて</h2><p>EC2のときはAMIを焼いて、セキュリティグループを触って、という作業が毎回発生していた。<br>いまは<code>docker compose up -d</code>で終わる。1GBのVPSに全部収まっているのは、<br>Caddyが15MB、レジストリが57MBと、どれも小さいおかげ。</p><p>次はこの上で動かしているグリッドbotの話を書く。</p>]]>
+    </content>
+    <id>https://sawara7.github.io/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/</id>
+    <link href="https://sawara7.github.io/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/"/>
+    <published>2026-10-16T12:30:00.000Z</published>
+    <summary>
+      <![CDATA[<p>6年前に<a href="/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/">AWS EC2にbot環境を移行する</a>という記事]]>
+    </summary>
+    <title>AWS EC2からさくらのVPSにbot環境を移した</title>
+    <updated>2026-10-18T05:15:54.782Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="ポートフォリオ" scheme="https://sawara7.github.io/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/"/>
+    <category term="投資" scheme="https://sawara7.github.io/tags/%E6%8A%95%E8%B3%87/"/>
+    <content>
+      <![CDATA[<h1 id="現在の構成"><a href="#現在の構成" class="headerlink" title="現在の構成"></a>現在の構成</h1><p>お盆連休最後の日曜日は、毎年資産運用を見直すのが慣例になっている。現在のポートフォリオを列挙する。</p><h2 id="1-仮想通貨の自動売買"><a href="#1-仮想通貨の自動売買" class="headerlink" title="1. 仮想通貨の自動売買"></a>1. 仮想通貨の自動売買</h2><p>仮想通貨を売買するうえで最大のメリットは株と違い、APIが利用できるので自動売買プログラムを開発できること。これが楽しくてここ数年どっぷりはまっている。<br>全然稼げていないがいつか利益が出ることを信じて・・・</p><h3 id="Bitbank"><a href="#Bitbank" class="headerlink" title="Bitbank"></a>Bitbank</h3><p>仮想通貨取引所としてはメインで利用している。自動売買プログラムを開発中。UIが綺麗で、APIが使いやすい。<br>現物の板取引が充実しており、取り扱い銘柄が豊富。また、最小購入単位が全銘柄0.0001とxrpなら1円以下から購入できるので、自動売買の戦略が広がる。</p><h3 id="Bitflyer"><a href="#Bitflyer" class="headerlink" title="Bitflyer"></a>Bitflyer</h3><p>最近使っていない。btcfxで空売りしたいときに利用している。いつか自動売買プログラムを開発したい。</p><h3 id="CoinCheck"><a href="#CoinCheck" class="headerlink" title="CoinCheck"></a>CoinCheck</h3><p>この会社独自のサービスがいろいろとあり、試しに小額預けている。貸し仮想通貨というものがあり、様々な銘柄を小額から貸し出すことができるため、そこに少し預けている。botをつくる予定はない。</p><h2 id="2-国内株式"><a href="#2-国内株式" class="headerlink" title="2. 国内株式"></a>2. 国内株式</h2><p>主に自分の興味のある業界の銘柄を購入している。選定に関してはかなり主観的で、その会社のコンテンツが流行りそうかどうかで選んでいる。例えばbitbankを運営している会社の親会社…とか、好きなアニメの制作会社…とか。どちらかというと売買差益重視。<br>最近は決算情報も見るようにして、判断材料の一部にしている。<br>証券会社はauカブコム証券。</p><h2 id="3-投資信託"><a href="#3-投資信託" class="headerlink" title="3. 投資信託"></a>3. 投資信託</h2><p>不動産系とアフリカ系の投資信託に小額預けている。</p><p>不動産系は毎月分配金を入手できるので持っていて楽しい。ワールドリートオープンという昔からある投資ファンドに投資していたが、あまり利率が高くないようなので、J-REIT系の投資ファンドに移行中。</p><p>アフリカ系はFACTFULNESSという本を読んだ影響。世界は総じて豊かになってきており、アフリカも例外ではない。大きな経済発展が見込める最後の大陸なのでということで、アフリカ企業に投資している投資ファンドを探したらあった。</p><p>あと、WealthNaviにも小額預けている。あまり評判が良くないのでお試しで利用中。</p><h2 id="4-FX"><a href="#4-FX" class="headerlink" title="4. FX"></a>4. FX</h2><h2 id="OANDA-Japan"><a href="#OANDA-Japan" class="headerlink" title="OANDA Japan"></a>OANDA Japan</h2><p>APIが利用できる取引所はOANDAくらいしかない。今は仮想通貨の自動売買に集中していてFXは利用していないが、為替FXにも使えるロジックを開発しているので、いつか挑戦したい。</p><h1 id="今後利用したいサービス"><a href="#今後利用したいサービス" class="headerlink" title="今後利用したいサービス"></a>今後利用したいサービス</h1><h2 id="外国株式"><a href="#外国株式" class="headerlink" title="外国株式"></a>外国株式</h2><p>SBI証券とマネックス証券でアメリカの株が買えるらしいので、SBI証券の口座開設中。</p><h2 id="不動産クラウドファンディング"><a href="#不動産クラウドファンディング" class="headerlink" title="不動産クラウドファンディング"></a>不動産クラウドファンディング</h2><p><a href="https://oh-ya.jp/">OhYa</a>という不動産投資紹介サイトで興味を持った。不動産投資信託とは異なり、自身が物件のオーナーになることができる。ところがコロナのせいか案件が少ない。</p><h2 id="株式クラウドファンディング"><a href="#株式クラウドファンディング" class="headerlink" title="株式クラウドファンディング"></a>株式クラウドファンディング</h2><p>このブログ記事を読んで興味を持った。</p><p><a href="https://oh-ya.jp/columns/stock_investment_crowdfunding">株式投資型クラウドファンディングで未公開株を手に入れる方法</a></p><p>エンジェル投資税制？というものがあり、控除されるらしい。<br>自由に売買できないので、配当金目当てで投資するのだが敷居が少し高いかもしれない。</p><h2 id="DeFi"><a href="#DeFi" class="headerlink" title="DeFi"></a>DeFi</h2><p>twitterのタイムラインで話題になっているが調べていないのでよくわからない（草コイン？インデックス？）幅を広げ過ぎな感じがあるので、時間があれば。</p>]]>
+    </content>
+    <id>https://sawara7.github.io/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/</id>
+    <link href="https://sawara7.github.io/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/"/>
+    <published>2020-08-15T20:50:29.000Z</published>
+    <summary>
+      <![CDATA[<h1 id="現在の構成"><a href="#現在の構成" class="headerlink" title="現在の構成"></a>現在の構成</h1><p>お盆連休最後の日曜日は、毎年資産運用を見直すのが慣例になっている。現在のポートフォリオを列挙する。</p>
+<h2]]>
+    </summary>
+    <title>2020年8月のポートフォリオ</title>
+    <updated>2026-10-11T00:40:57.072Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="株" scheme="https://sawara7.github.io/tags/%E6%A0%AA/"/>
+    <category term="EDINET" scheme="https://sawara7.github.io/tags/EDINET/"/>
+    <category term="API" scheme="https://sawara7.github.io/tags/API/"/>
+    <content>
+      <![CDATA[<h2 id="決算書調べるの楽しい"><a href="#決算書調べるの楽しい" class="headerlink" title="決算書調べるの楽しい"></a>決算書調べるの楽しい</h2><p>noteの<a href="https://note.com/ijnrdx">妄想する決算</a>さんに影響を受けて<br>決算書を読むのが少し楽しくなってきた。<br>各企業のHPでIR情報を覗いてしていたが、効率悪いので<br>何かAPIのようなもので一括で取得できないか調べてみた。</p><h2 id="効率的にデータ収集したい"><a href="#効率的にデータ収集したい" class="headerlink" title="効率的にデータ収集したい"></a>効率的にデータ収集したい</h2><p>どうやら金融庁が日本の企業の有価証券報告書をDBで管理しているらしい。<br><a href="https://disclosure.edinet-fsa.go.jp/">EDINET</a>というものがあるらしい。<br>誰でもAPIを利用してデータを閲覧できるらしい。<br>こんな素晴らしいシステムに気がつかないなんて情弱なんじゃないかと気が滅入ったが、<br>気を取り直して、このAPIを利用してみようと思う。</p><h2 id="EDINET-API"><a href="#EDINET-API" class="headerlink" title="EDINET API"></a>EDINET API</h2><p><a href="https://disclosure.edinet-fsa.go.jp/EKW0EZ0015.html">EDINET API</a>というものがあった。<br>仕様書を読んでみると、どうやら諸々の報告書をダウンロードするためのAPIで、<br>私が欲しい企業の売上とか資産とかの情報は、pdfもしくはxmlのようなファイルに記載してあるっぽい。<br>日本中の企業の情報をデータベース化したいけど、なかなか工数がかかりそうだ。</p>]]>
+    </content>
+    <id>https://sawara7.github.io/2020/07/07/EDINET/</id>
+    <link href="https://sawara7.github.io/2020/07/07/EDINET/"/>
+    <published>2020-07-07T04:55:59.000Z</published>
+    <summary>
+      <![CDATA[<h2 id="決算書調べるの楽しい"><a href="#決算書調べるの楽しい" class="headerlink" title="決算書調べるの楽しい"></a>決算書調べるの楽しい</h2><p>noteの<a href="https://note.com/ijnrdx"]]>
+    </summary>
+    <title>EDINET</title>
+    <updated>2026-10-11T00:40:57.072Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="株" scheme="https://sawara7.github.io/tags/%E6%A0%AA/"/>
+    <content>
+      <![CDATA[<h1 id="決算について"><a href="#決算について" class="headerlink" title="決算について"></a>決算について</h1><p>決算を読めるようになりたいと思い、いろいろな企業のIR情報を調べてみた。<br>従業員数、資産、負債、売上純利益、営業利益、純利益を一覧にしてみた。<br>自分の会社についても調べてみた。<br>東証一部企業よりも規模は劣るが、営業利益や純利益はそこそこある。<br>資産と負債が異常に少ないのはなぜだろう・・・</p><h1 id="株式会社について"><a href="#株式会社について" class="headerlink" title="株式会社について"></a>株式会社について</h1><p>株式会社の仕組みについて調べてみた<br>株式会社は株主が所有権、経営権的な権利を持つようだ。<br>そして、経営する株主を社員と呼ぶそう。<br>一般的な社員の意味合いとは異なる。一般的な社員はいわゆる従業員と呼べばいいのか。</p><p>投資家が多くの株式を持っていると、経営権がもっていかれてしまうので、<br>経営者や従業員持株会のようにある程度、株を保有していないといけない？</p><p>大株主欄に、信託銀行の名が目に付く、<br>信託銀行は、機関投資家から株式の売買を委託されているらしい。<br>機関投資家は、日銀等も含み、匿名性を保つために信託銀行経由で株を購入しているらしい。</p><p>企業はどのタイミングで、株式から資金を得るのだろうか？<br>日銀は毎年のように株を購入しているらしい。その金はどこからでているのか？</p>]]>
+    </content>
+    <id>https://sawara7.github.io/2020/07/05/%E6%A0%AA%E5%BC%8F%E4%BC%9A%E7%A4%BE%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6%E8%AA%BF%E3%81%B9%E3%81%9F/</id>
+    <link href="https://sawara7.github.io/2020/07/05/%E6%A0%AA%E5%BC%8F%E4%BC%9A%E7%A4%BE%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6%E8%AA%BF%E3%81%B9%E3%81%9F/"/>
+    <published>2020-07-05T05:38:33.000Z</published>
+    <summary>
+      <![CDATA[<h1 id="決算について"><a href="#決算について" class="headerlink" title="決算について"></a>決算について</h1><p>決算を読めるようになりたいと思い、いろいろな企業のIR情報を調べてみた。<br>従業員数、資産、負債、売上純]]>
+    </summary>
+    <title>株式会社について調べた</title>
+    <updated>2026-10-11T00:38:51.056Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <content>
+      <![CDATA[<p>npm i -D typescript jest ts-jest @types&#x2F;jest</p><p><a href="https://qiita.com/bathtimefish/items/8623379ddd235945fac2">https://qiita.com/bathtimefish/items/8623379ddd235945fac2</a></p>]]>
+    </content>
+    <id>https://sawara7.github.io/2020/02/29/github%E3%81%A7CI%E6%A7%8B%E7%AF%89/</id>
+    <link href="https://sawara7.github.io/2020/02/29/github%E3%81%A7CI%E6%A7%8B%E7%AF%89/"/>
+    <published>2020-02-28T20:27:32.000Z</published>
+    <summary>
+      <![CDATA[<p>npm i -D typescript jest ts-jest @types&#x2F;jest</p>
+<p><a href="https://qiita.com/bathtimefish/items/8623379ddd235945fac2">https://qiit]]>
+    </summary>
+    <title>githubでCI構築</title>
+    <updated>2026-10-11T00:38:51.056Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="aws" scheme="https://sawara7.github.io/tags/aws/"/>
+    <category term="ubuntu" scheme="https://sawara7.github.io/tags/ubuntu/"/>
+    <content>
+      <![CDATA[<p>自動トレードBOTを自宅のWindowsマシンで動かしていた。<br>Windowsで勝手が知れているし、vscodeでデバッグもできるので使用していたが、<br>2週間に1回くらいの頻度で勝手に再起動するという現象が発生。<br>自作PCでサーバー用途で作っていないので、安定性やら電気代やら不安になってきた。<br>ということで、AWS環境に移行した。<br>下記は移行作業の備忘録。</p><h1 id="ec2インスタンスを作成する"><a href="#ec2インスタンスを作成する" class="headerlink" title="ec2インスタンスを作成する"></a>ec2インスタンスを作成する</h1><p>ずいぶん前に一つインスタンスを作っていた。<br>ちょうど1年間の無料枠が切れており、今月の請求額が増えていた・・・<br>不要なファイルが溜まっているようなので、インスタンスを作り直すことにした。<br>今更気づいたが、無料枠ってインスタンスつくるたびについてくる？？<br>じゃあ毎年インスタンス作りなおせば無料なの？？<br>ubuntu 18.04</p><h1 id="node-jsとnpmをインストールする"><a href="#node-jsとnpmをインストールする" class="headerlink" title="node.jsとnpmをインストールする"></a>node.jsとnpmをインストールする</h1><p><a href="https://www.sejuku.net/blog/84238"><img src="https://s3-ap-northeast-1.amazonaws.com/samurai-blog-media/blog/wp-content/uploads/2019/01/ubuntu_nodejs.jpg">UbuntuにNode.jsを導入する方法3つを目的別に紹介！(18.04LTS) | 侍エンジニア塾ブログ（Samurai Blog） - プログラミング入門者向けサイトUbuntuにNode.jsを導入したい と思っている方はいませんか？しかし、いざ調べてみるとやり方が色々あって、自分の求めているものがどれなのかいまいちわかりにくい時ってありますよね。 そこで、本日は、Ubuntu18.04LTSにNode.jsを導入するということを目的に、 …</a></p><h1 id="node-jsプログラムをバックグラウンドで実行する"><a href="#node-jsプログラムをバックグラウンドで実行する" class="headerlink" title="node.jsプログラムをバックグラウンドで実行する"></a>node.jsプログラムをバックグラウンドで実行する</h1><p>通常の実行方法だと（node xxx）<br>コンソールを終了すると（ubuntuからログアウトすると）nodejsスクリプトが終了してしまう。</p><p>バックグラウンドでプログラムを実行したいときは、nohupコマンドを使う。<br><code>sudo nohup node main &amp;</code><br>でバックグラウンドでnode.jsスクリプトを実行する<br>プロセスが実行しているかどうかは<br><code>ps -fu root</code><br>で確認する<br>プロセスを終了したいときは<br><code>kill プロセスID</code><br>で終了する<br>※二重起動して、API使用制限オーバーしてBANされたりしたらやだなぁ<br>API使用状況を確認できる機能を実装したい</p><h1 id="ubuntuの時間を日本時間にする"><a href="#ubuntuの時間を日本時間にする" class="headerlink" title="ubuntuの時間を日本時間にする"></a>ubuntuの時間を日本時間にする</h1><p>ubuntuの場合は、下記のようにリンクを張り替えるだけでいけた。<br><code>ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime</code></p><p><a href="https://www.t3a.jp/blog/infrastructure/set-timezone/#outline__2_3"><img src="https://www.t3a.jp/wp-content/uploads/2018/11/set_timezone_top.jpg">[Linux]タイムゾーン(Timezone)をUTCから日本標準時(JST)に変更する目次 1. タイムゾーン(Timezone)の初期設定は世界標準時(UTC)2. タイムゾーン(Timezone)の設定方法2.1. [Amazon Linux]タイムゾーン(Timezone)の設定変更2.1.1. 実行するサンプルコマン</a></p>]]>
+    </content>
+    <id>https://sawara7.github.io/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/</id>
+    <link href="https://sawara7.github.io/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/"/>
+    <published>2020-02-15T03:33:41.000Z</published>
+    <summary>
+      <![CDATA[<p>自動トレードBOTを自宅のWindowsマシンで動かしていた。<br>Windowsで勝手が知れているし、vscodeでデバッグもできるので使用していたが、<br>2週間に1回くらいの頻度で勝手に再起動するという現象が発生。<br>自作PCでサーバー用途で作っていないので、]]>
+    </summary>
+    <title>Aws Ec2にbot環境を移行する</title>
+    <updated>2026-10-11T00:40:57.072Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="HEXO" scheme="https://sawara7.github.io/tags/HEXO/"/>
+    <content>
+      <![CDATA[<p>ここを参考にした。<br><a href="https://photo-tea.com/p/hexo-markdown-notation/">https://photo-tea.com/p/hexo-markdown-notation/</a></p><p>どうやら、プラグインのような拡張機能があるみたい。<br>とりあえず、今のところ使いそうなのは、外部リンクのプレビューとtweetのプレビュー</p><p>twitterの記事<br><code>npm install hexo-tag-twitter --save</code><br>&#96;&#96;</p><script async defer src="//platform.twitter.com/widgets.js" charset="utf-8"></script><p>外部リンクのプレビュー<br><code>npm install hexo-tag-link-preview</code><br>&#96;&#96;</p><p><a href="https://www.npmjs.com/package/hexo-tag-link-preview"><img src="https://static.npmjs.com/338e4905a2684ca96e08c7780fc68412.png">hexo-tag-link-previewEmbed a link preview on your Hexo article.</a></p>]]>
+    </content>
+    <id>https://sawara7.github.io/2020/02/05/hexo%E3%81%A7tweet%E3%82%84%E5%A4%96%E9%83%A8%E3%83%96%E3%83%AD%E3%82%B0%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%80%E6%96%B9%E6%B3%95/</id>
+    <link href="https://sawara7.github.io/2020/02/05/hexo%E3%81%A7tweet%E3%82%84%E5%A4%96%E9%83%A8%E3%83%96%E3%83%AD%E3%82%B0%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%80%E6%96%B9%E6%B3%95/"/>
+    <published>2020-02-05T02:29:29.000Z</published>
+    <summary>
+      <![CDATA[<p>ここを参考にした。<br><a href="https://photo-tea.com/p/hexo-markdown-notation/">https://photo-tea.com/p/hexo-markdown-notation/</a></p>
+<p>どうやら、プラ]]>
+    </summary>
+    <title>Hexoでtweetや外部ブログを埋め込む方法</title>
+    <updated>2026-10-11T00:38:51.055Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="TypeScript" scheme="https://sawara7.github.io/tags/TypeScript/"/>
+    <category term="Firebase" scheme="https://sawara7.github.io/tags/Firebase/"/>
+    <content>
+      <![CDATA[<h3 id="JavaScript-→-TypesScript"><a href="#JavaScript-→-TypesScript" class="headerlink" title="JavaScript → TypesScript"></a>JavaScript → TypesScript</h3><p>以前はjavascriptで利用していた。<br>NoSQL方式で、オブジェクトをそのまま保存していたので超絶簡単だったが、<br>TypeScriptではどういう風に使うのだろうか？<br>どんな型でも保存できるのだろうか？</p><h3 id="結果"><a href="#結果" class="headerlink" title="結果"></a>結果</h3><p>型をanyにすれば良いだけだった・・・</p><figure class="highlight ts"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">async</span> <span class="title function_">load</span>(<span class="attr">path</span>: <span class="built_in">string</span>): <span class="title class_">Promise</span>&lt;<span class="built_in">any</span>&gt;&#123;</span><br><span class="line">  <span class="keyword">let</span> <span class="attr">res</span>: admin.<span class="property">database</span>.<span class="property">DataSnapshot</span> = <span class="keyword">await</span> admin.<span class="title function_">database</span>().<span class="title function_">ref</span>(path).<span class="title function_">once</span>(<span class="string">&#x27;value&#x27;</span>);</span><br><span class="line">  <span class="keyword">return</span> res.<span class="title function_">val</span>();</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">async</span> <span class="title function_">save</span>(<span class="attr">path</span>: <span class="built_in">string</span>, <span class="attr">value</span>: <span class="built_in">any</span>): <span class="title class_">Promise</span>&lt;<span class="built_in">void</span>&gt;&#123;</span><br><span class="line">  <span class="keyword">await</span> admin.<span class="title function_">database</span>().<span class="title function_">ref</span>(path).<span class="title function_">set</span>(value);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure><p>保存するときも、どんな型でもそのまま保存してくれるみたい・・・</p><figure class="highlight ts"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> <span class="string">&quot;../base/utils&quot;</span></span><br><span class="line"><span class="keyword">let</span> db = <span class="keyword">new</span> <span class="title class_">FireBaseDataBase</span>();</span><br><span class="line">(<span class="title function_">async</span> () =&gt; &#123;</span><br><span class="line">  <span class="keyword">let</span> <span class="attr">ins</span>: <span class="title class_">Instrument</span> = &#123;</span><br><span class="line">      <span class="attr">exchange</span>: <span class="string">&#x27;bitflyer&#x27;</span>,</span><br><span class="line">      <span class="attr">pair</span>:     <span class="string">&#x27;btc_jpy&#x27;</span>,</span><br><span class="line">      <span class="attr">min_amount</span>: <span class="number">0</span>,</span><br><span class="line">      <span class="attr">min_price</span>: <span class="number">0</span>,</span><br><span class="line">      <span class="attr">taker_fee</span>: <span class="number">0</span>,</span><br><span class="line">      <span class="attr">maker_fee</span>: <span class="number">0</span></span><br><span class="line">  &#125;;</span><br><span class="line">  <span class="keyword">let</span> <span class="attr">tk</span>: <span class="title class_">Ticker</span> = &#123;</span><br><span class="line">    <span class="attr">instrument</span>: ins,</span><br><span class="line">    <span class="attr">best_ask</span>: <span class="number">123</span>,</span><br><span class="line">    <span class="attr">best_bid</span>: <span class="number">456</span>,</span><br><span class="line"></span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">await</span> db.<span class="title function_">save</span>(<span class="string">&#x27;/bot/bitbank/btc_jpy&#x27;</span>, tk)</span><br><span class="line">  <span class="keyword">let</span> val = <span class="keyword">await</span> db.<span class="title function_">load</span>(<span class="string">&#x27;/bot/bitbank/btc_jpy&#x27;</span>)</span><br><span class="line">  <span class="variable language_">console</span>.<span class="title function_">log</span>(val);</span><br><span class="line">  &#125;)();</span><br></pre></td></tr></table></figure>]]>
+    </content>
+    <id>https://sawara7.github.io/2020/02/05/Firebase-RealTimeDatabase%E3%82%92Typescript%E3%81%A7%E5%88%A9%E7%94%A8%E3%81%99%E3%82%8B/</id>
+    <link href="https://sawara7.github.io/2020/02/05/Firebase-RealTimeDatabase%E3%82%92Typescript%E3%81%A7%E5%88%A9%E7%94%A8%E3%81%99%E3%82%8B/"/>
+    <published>2020-02-05T02:25:57.000Z</published>
+    <summary>
+      <![CDATA[<h3 id="JavaScript-→-TypesScript"><a href="#JavaScript-→-TypesScript" class="headerlink" title="JavaScript → TypesScript"></a>JavaScript → T]]>
+    </summary>
+    <title>Firebase RealTimeDatabaseをTypescriptで利用する</title>
+    <updated>2026-10-11T00:38:51.055Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="TypeScript" scheme="https://sawara7.github.io/tags/TypeScript/"/>
+    <category term="JSON" scheme="https://sawara7.github.io/tags/JSON/"/>
+    <content>
+      <![CDATA[<p><code>npm install typescript</code><br>tsc –initでtsconfig.jsonが生成される<br>tscコマンドでコンパイルできる</p><p>tsconfig.jsonでコンパイルの設定ができる<br>・出力先の設定　&#x2F;dist</p><p>・JSONファイルをそのまま読み込めるようにした<br><a href="https://qiita.com/nju33/items/15a8b01396a66644c1b3">https://qiita.com/nju33/items/15a8b01396a66644c1b3</a><br>特にこだわりはないので自動で型定義する設定にした</p>]]>
+    </content>
+    <id>https://sawara7.github.io/2020/02/01/TypeScript%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%A6%E3%81%BF%E3%81%9F/</id>
+    <link href="https://sawara7.github.io/2020/02/01/TypeScript%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%A6%E3%81%BF%E3%81%9F/"/>
+    <published>2020-01-31T22:49:35.000Z</published>
+    <summary>
+      <![CDATA[<p><code>npm install typescript</code><br>tsc –initでtsconfig.jsonが生成される<br>tscコマンドでコンパイルできる</p>
+<p>tsconfig.jsonでコンパイルの設定ができる<br>・出力先の設定　&#x]]>
+    </summary>
+    <title>TypeScriptを使ってみた</title>
+    <updated>2026-10-11T00:38:51.054Z</updated>
+  </entry>
+  <entry>
+    <author>
+      <name>sawara7</name>
+    </author>
+    <category term="HEXO" scheme="https://sawara7.github.io/tags/HEXO/"/>
+    <content>
+      <![CDATA[<p>HexoとGithub pagesでブログをはじめました。</p><p>Github Pages<br><a href="https://liginc.co.jp/web/html-css/html/96453">https://liginc.co.jp/web/html-css/html/96453</a></p><p>Hexo<br><a href="https://liginc.co.jp/web/programming/server/104594">https://liginc.co.jp/web/programming/server/104594</a></p><p>アップロードにてこずった。<br><a href="http://paki.github.io/2015/05/26/hexo%E3%81%A7%E3%83%96%E3%83%AD%E3%82%B0%E3%81%A4%E3%81%8F%E3%81%A3%E3%81%9F/">http://paki.github.io/2015/05/26/hexoでブログつくった/</a></p>]]>
+    </content>
+    <id>https://sawara7.github.io/2020/02/01/%E3%83%96%E3%83%AD%E3%82%B0%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F/</id>
+    <link href="https://sawara7.github.io/2020/02/01/%E3%83%96%E3%83%AD%E3%82%B0%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F/"/>
+    <published>2020-01-31T21:19:50.000Z</published>
+    <summary>
+      <![CDATA[<p>HexoとGithub pagesでブログをはじめました。</p>
+<p>Github Pages<br><a href="https://liginc.co.jp/web/html-css/html/96453">https://liginc.co.jp/web/html]]>
+    </summary>
+    <title>ブログはじめました</title>
+    <updated>2026-10-11T00:38:51.054Z</updated>
+  </entry>
+</feed>

@@ -92,6 +92,290 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-bitbank全銘柄の価格ボードを作った" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2026/10/18/bitbank%E5%85%A8%E9%8A%98%E6%9F%84%E3%81%AE%E4%BE%A1%E6%A0%BC%E3%83%9C%E3%83%BC%E3%83%89%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F/" class="article-date">
+  <time class="dt-published" datetime="2026-10-18T11:40:00.000Z" itemprop="datePublished">2026-10-18</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="p-name article-title" href="/2026/10/18/bitbank%E5%85%A8%E9%8A%98%E6%9F%84%E3%81%AE%E4%BE%A1%E6%A0%BC%E3%83%9C%E3%83%BC%E3%83%89%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F/">bitbank全銘柄の価格ボードをバックエンド無しで作った</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>bitbankの全ペアの価格を一覧で見たくなって作った。<br>結果として<strong>サーバ側のコードが1行も要らなかった</strong>ので、その話を書く。</p>
+<h2 id="バックエンドが要らない理由"><a href="#バックエンドが要らない理由" class="headerlink" title="バックエンドが要らない理由"></a>バックエンドが要らない理由</h2><p>bitbankのpublic APIには、全ペアのtickerを1回で返すエンドポイントがある。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">https://public.bitbank.cc/tickers</span><br></pre></td></tr></table></figure>
+
+<p>これが62ペア分をまとめて返してくる。しかも<br><code>Access-Control-Allow-Origin: *</code> が付いている。</p>
+<p>つまり<strong>ブラウザから直接叩ける</strong>。CORSで弾かれないので、プロキシも、<br>バックエンドのポーリングも、APIキーの保管も要らない。<br>コンテナがやることは静的ファイルを配るだけになった。</p>
+<p>取引所のAPIは普通CORSを許可していない（キーを使うprivate APIなら当然そうあるべき）<br>が、ここは公開情報なので開いている。この一点で構成がまるごと簡単になった。</p>
+<h2 id="ポーリングはクライアント側で"><a href="#ポーリングはクライアント側で" class="headerlink" title="ポーリングはクライアント側で"></a>ポーリングはクライアント側で</h2><p>更新間隔は3秒・5秒・10秒・30秒・停止から選べるようにした。</p>
+<p>大事なのは<strong>タブが非表示のあいだは止める</strong>こと。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="variable language_">document</span>.<span class="title function_">addEventListener</span>(<span class="string">&#x27;visibilitychange&#x27;</span>, <span class="function">() =&gt;</span> &#123;</span><br><span class="line">  <span class="keyword">if</span> (<span class="variable language_">document</span>.<span class="property">hidden</span>) <span class="title function_">stop</span>();</span><br><span class="line">  <span class="keyword">else</span> <span class="title function_">start</span>();</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+
+<p>開きっぱなしのタブが、見られてもいないのに3秒おきにAPIを叩き続けるのは<br>行儀が悪い。相手の公開APIを使わせてもらっている以上、ここはやっておく。</p>
+<p>選んだ間隔・通貨フィルタ・検索文字列・ソート列は<code>localStorage</code>に入れてあるので、<br>開き直しても前回の状態になる。</p>
+<h2 id="「出来高」でソートしてはいけない"><a href="#「出来高」でソートしてはいけない" class="headerlink" title="「出来高」でソートしてはいけない"></a>「出来高」でソートしてはいけない</h2><p>表に出している列はこれ。</p>
+<table>
+<thead>
+<tr>
+<th>列</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>最終 &#x2F; 買値 &#x2F; 売値 &#x2F; 高値 &#x2F; 安値</td>
+<td>取引所が返す精度のまま</td>
+</tr>
+<tr>
+<td>前日比</td>
+<td><code>(last − open) / open</code></td>
+</tr>
+<tr>
+<td>出来高</td>
+<td><strong>基軸通貨</strong>建ての数量</td>
+</tr>
+<tr>
+<td>代金</td>
+<td><code>出来高 × 最終値</code> &#x3D; <strong>決済通貨</strong>建ての金額</td>
+</tr>
+</tbody></table>
+<p>既定のソートは<strong>代金</strong>にしてある。出来高にしていない理由は、<br>出来高が銘柄をまたいで比較できないから。</p>
+<p>92 BTCと9,989 GALAは、どちらも「出来高」だが意味がまったく違う。<br>前者は数千万円、後者は数万円かもしれない。数量をそのまま並べると、<br>単価の安い銘柄が上に来るだけの無意味な順序になる。</p>
+<p>最終値を掛けて金額に揃えると、はじめて「どのペアが実際に動いているか」が<br>分かる表になる。</p>
+<h2 id="サブパスで配るときの罠"><a href="#サブパスで配るときの罠" class="headerlink" title="サブパスで配るときの罠"></a>サブパスで配るときの罠</h2><p>このページはリバースプロキシの<code>/ticker/</code>以下に置いている。<br>プレフィックスを剥がしてから転送しているので、中のnginxは自分が<br>サブパスにいることを知らない。</p>
+<p>このとき、<strong>アセットの参照を絶対パスで書くと壊れる</strong>。</p>
+<figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- ダメ。ホストのルートを見にいく --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">&quot;/app.js&quot;</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="comment">&lt;!-- これ --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">&quot;app.js&quot;</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br></pre></td></tr></table></figure>
+
+<p>ローカルでルートに置いて開発していると気づかないので、デプロイして初めて<br>真っ白なページに出会うことになる。</p>
+<h2 id="できたもの"><a href="#できたもの" class="headerlink" title="できたもの"></a>できたもの</h2><p>単一のHTMLファイルで、アセットは全部インライン。<br>nginxのコンテナに置いてあるだけ。サーバ側の状態を持たないので、<br>落ちても再起動すれば終わり。</p>
+<p>bitbankのAPIは自動売買botを書くのにも素直で、この価格ボードも<br><a href="/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/">グリッドbot</a>も同じAPIを使っている。<br>ドキュメントが整っていて、公開情報はCORSが開いているというのは、<br>個人で何か作るときにはかなり効く。</p>
+
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://sawara7.github.io/2026/10/18/bitbank%E5%85%A8%E9%8A%98%E6%9F%84%E3%81%AE%E4%BE%A1%E6%A0%BC%E3%83%9C%E3%83%BC%E3%83%89%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F/" data-id="cmvddj504000703odh0vc4ih7" data-title="bitbank全銘柄の価格ボードをバックエンド無しで作った" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/API/" rel="tag">API</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/JavaScript/" rel="tag">JavaScript</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/bitbank/" rel="tag">bitbank</a></li></ul>
+
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-7つのリポジトリを1つにまとめた" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/" class="article-date">
+  <time class="dt-published" datetime="2026-10-17T13:10:00.000Z" itemprop="datePublished">2026-10-17</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="p-name article-title" href="/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/">7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>bitbankのグリッドbotは、長いあいだ7つのリポジトリに分かれていた。<br>共通処理をライブラリとして切り出すのは良い習慣だと思っていたのだが、<br>個人開発の規模でやると<strong>デプロイのたびに面倒を払う</strong>ことになっていた。</p>
+<p>まとめた結果がこれ。</p>
+<table>
+<thead>
+<tr>
+<th>元のリポジトリ</th>
+<th>移動先</th>
+<th>行数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>bot-framework</code></td>
+<td><code>src/framework/</code></td>
+<td>921</td>
+</tr>
+<tr>
+<td><code>node-bitbankcc</code></td>
+<td><code>src/bitbank/</code></td>
+<td>595</td>
+</tr>
+<tr>
+<td><code>bot-bitbank</code></td>
+<td><code>src/bot/</code></td>
+<td>428</td>
+</tr>
+<tr>
+<td><code>utils-trade</code></td>
+<td><code>src/trade/</code></td>
+<td>283</td>
+</tr>
+<tr>
+<td><code>utils-mongodb</code></td>
+<td><code>src/db/</code></td>
+<td>272</td>
+</tr>
+<tr>
+<td><code>utils-general</code></td>
+<td><code>src/utils/</code></td>
+<td>198</td>
+</tr>
+<tr>
+<td><code>logic-namping</code></td>
+<td><code>src/logic/</code></td>
+<td>101</td>
+</tr>
+</tbody></table>
+<p>合計2,800行。1つのリポジトリに収まる量だった。</p>
+<h2 id="何が面倒だったか"><a href="#何が面倒だったか" class="headerlink" title="何が面倒だったか"></a>何が面倒だったか</h2><p>依存をこう書いていた。</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">&quot;dependencies&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;bot-framework&quot;</span><span class="punctuation">:</span> <span class="string">&quot;github:sawara7/bot-framework&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;utils-trade&quot;</span><span class="punctuation">:</span> <span class="string">&quot;github:sawara7/utils-trade&quot;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>privateリポジトリをgithub:で参照すると、<code>npm install</code>に<strong>認証が要る</strong>。<br>ローカルでは自分のSSH鍵が効くので気づかないが、Dockerのビルドコンテナの中には<br>鍵が無い。だからビルドのたびに鍵を渡す必要があった。</p>
+<figure class="highlight dockerfile"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">RUN</span><span class="language-bash"> --mount=<span class="built_in">type</span>=ssh npm ci</span></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">build:</span></span><br><span class="line">  <span class="attr">ssh:</span> <span class="string">default</span></span><br></pre></td></tr></table></figure>
+
+<p>これでCIも面倒になるし、ビルド環境を変えるたびに鍵の受け渡しを考えることになる。<br><strong><code>github:sawara7/*</code>の依存が全部消えた結果、<code>--mount=type=ssh</code>も<code>build.ssh</code>も<br>要らなくなった。</strong> ビルドがただの<code>npm ci</code>に戻った。</p>
+<p>ライブラリを分けること自体が悪いのではなく、「他人も使うのか？」を考えずに<br>分けたのが良くなかった。実際には全部このbotからしか呼ばれていなかった。</p>
+<h2 id="ついでに見つかったバグ"><a href="#ついでに見つかったバグ" class="headerlink" title="ついでに見つかったバグ"></a>ついでに見つかったバグ</h2><p>1か所に集めると全体を通して読めるようになって、長年気づかなかったバグが出てきた。<br>いくつか挙げる。</p>
+<h3 id="10-pricePrecision-が累乗ではなかった"><a href="#10-pricePrecision-が累乗ではなかった" class="headerlink" title="10^pricePrecision が累乗ではなかった"></a><code>10^pricePrecision</code> が累乗ではなかった</h3><figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> precision = <span class="number">10</span> ^ pricePrecision;</span><br></pre></td></tr></table></figure>
+
+<p>JavaScriptの<code>^</code>は<strong>ビットXOR</strong>であって累乗ではない。<code>10^0</code>は10、<code>10^2</code>は8になる。<br>累乗は<code>**</code>か<code>Math.pow()</code>。</p>
+<p>この値はtickerの精度として渡されていた。ずっと動いて「いた」のは、<br>結果的に妙な値でも処理が通ってしまっていたから。累乗のつもりで<code>^</code>を書くのは<br>他言語から来ると本当にやりがちで、しかもエラーにならないので残り続ける。</p>
+<h3 id="bidとaskが逆だった"><a href="#bidとaskが逆だった" class="headerlink" title="bidとaskが逆だった"></a>bidとaskが逆だった</h3><figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">bid</span>: mid + precision,</span><br><span class="line"><span class="attr">ask</span>: mid - precision,</span><br></pre></td></tr></table></figure>
+
+<p>買値が売値より<strong>高い</strong>状態になっていた。損切りの方向判定が反転する。</p>
+<p>これが表に出ていなかったのは、<code>losscutRate: 0</code>で損切りロジックそのものが<br>動いていなかったから。損切りを有効にした瞬間に踏む地雷だった。<br>ついでに、実際のスプレッドを捨ててmid±precisionに潰していたのもやめて、<br>板をそのまま使うようにした。</p>
+<h3 id="決済注文が建玉側の注文種別を書いていた"><a href="#決済注文が建玉側の注文種別を書いていた" class="headerlink" title="決済注文が建玉側の注文種別を書いていた"></a>決済注文が建玉側の注文種別を書いていた</h3><p><code>getCloseOrderRequest</code>の中で<code>openOrderType</code>を読んでいた。<br><code>getOpenOrderRequest</code>からのコピペで、変数名だけ直し忘れたやつ。</p>
+<h3 id="最小ロットのチェックが存在しなかった"><a href="#最小ロットのチェックが存在しなかった" class="headerlink" title="最小ロットのチェックが存在しなかった"></a>最小ロットのチェックが存在しなかった</h3><p>設定に<code>minSize</code>という項目があるのに、<strong>誰も読んでいなかった</strong>。<br>予算が足りない段では数量が0に切り捨てられ、取引所に弾かれて<code>success: false</code>が<br>返るだけ。理由はログに残らない。</p>
+<p>症状としては「なぜか上の段だけ約定しない」という形で出る。原因が分からないまま<br>何年か放置していた。発注前にチェックして、足りなければ必要な予算とあわせて<br>ログに出すようにした。UIにも「全段が最小ロットを満たすのに必要な予算」を<br>表示するようにしている。</p>
+<h3 id="予算取得が毎ループ走っていて、失敗すると全部止まっていた"><a href="#予算取得が毎ループ走っていて、失敗すると全部止まっていた" class="headerlink" title="予算取得が毎ループ走っていて、失敗すると全部止まっていた"></a>予算取得が毎ループ走っていて、失敗すると全部止まっていた</h3><p>残高取得はprivate APIを1回、保有銘柄ごとにpublic APIを1回呼ぶ。<br>これがbotループの<strong>毎イテレーション</strong>で、しかも約定検知より<strong>前</strong>にあった。</p>
+<p>つまり、保有している無関係な銘柄のticker取得が一度失敗しただけで、<br>その回の約定検知ごとスキップされていた。60秒キャッシュにして、<br>失敗時は直近の値を使い続けるようにした。</p>
+<h3 id="損益に約定価格を使っていなかった"><a href="#損益に約定価格を使っていなかった" class="headerlink" title="損益に約定価格を使っていなかった"></a>損益に約定価格を使っていなかった</h3><p>決済済みの往復の損益に<code>getUnrealizedPL</code>を使っていた。これは<code>ticker.bid</code>、<br>つまり<strong>その時点の板の価格</strong>で評価する関数で、建玉の評価には正しいが、<br>決済済みの取引に使うと「約定を検知したときに相場がたまたまどこにいたか」を<br>記録することになる。</p>
+<p>決済の実際の約定値は<code>pos.closePrice</code>に入っているのに使われていなかった。<br>2つの約定価格から計算する<code>getRealizedPL</code>を足した。</p>
+<p>あわせて、<code>cumulativePL</code>に純額しか入っていなかったのも直した。これだと<br>「グリッドが稼いだ分」と「手数料で払った分」が分離できない。<br>粗利・建玉手数料・決済手数料・建値・決済値・数量・段番号を別々に保存している。<br>古いドキュメントも読めるよう、追加したフィールドは全部optionalにした。</p>
+<h2 id="まとめ"><a href="#まとめ" class="headerlink" title="まとめ"></a>まとめ</h2><p>リポジトリを分けると、<strong>全体を通して読む機会が無くなる</strong>。<br>境界をまたいだバグ（bidとaskが逆、使われていない設定項目）は、<br>分かれている限り見つからない。</p>
+<p>2,800行なら1つでいい、というのが結論。</p>
+<p>次は、このbotが叩いているbitbankのAPIで作った価格ボードの話を書く。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://sawara7.github.io/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/" data-id="cmvddj502000103od75j0fypv" data-title="7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Docker/" rel="tag">Docker</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/TypeScript/" rel="tag">TypeScript</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/bot/" rel="tag">bot</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E3%83%AA%E3%83%95%E3%82%A1%E3%82%AF%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0/" rel="tag">リファクタリング</a></li></ul>
+
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-さくらのVPSにbot環境を移した" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/" class="article-date">
+  <time class="dt-published" datetime="2026-10-16T12:30:00.000Z" itemprop="datePublished">2026-10-16</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="p-name article-title" href="/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/">AWS EC2からさくらのVPSにbot環境を移した</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>6年前に<a href="/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/">AWS EC2にbot環境を移行する</a>という記事を書いた。<br>あれ以来ずっとEC2で動かしていたが、台数が増えるにつれて毎月の請求が効いてきたので、<br>さくらのVPSの月額千円ちょっとのプランに引っ越した。メモリ1GBでbot3本とレジストリと<br>リバースプロキシが全部載っている。</p>
+<p>せっかくなので、ただ移すのではなく構成を整理した。</p>
+<h2 id="構成"><a href="#構成" class="headerlink" title="構成"></a>構成</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">インターネット</span><br><span class="line">   │ 443</span><br><span class="line">   ▼</span><br><span class="line"> Caddy（TLS終端・振り分け）</span><br><span class="line">   ├─ /ticker/ → 価格ボード（静的）</span><br><span class="line">   ├─ /bot/    → グリッドbotの設定UI</span><br><span class="line">   └─ /        → 自前のDockerレジストリ</span><br></pre></td></tr></table></figure>
+
+<p>全部Dockerコンテナで、<code>edge</code> という名前のDockerネットワークを1つ作って、その上に乗せている。</p>
+<h2 id="Caddyにした理由"><a href="#Caddyにした理由" class="headerlink" title="Caddyにした理由"></a>Caddyにした理由</h2><p>nginxでもよかったが、<strong>Let’s Encryptの証明書取得と更新を何も書かずにやってくれる</strong>のが<br>決め手だった。設定ファイルにドメインを書くだけで証明書が降ってくる。certbotのcronも<br>要らないし、更新忘れで落とすこともない。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">&#123;$SITE_DOMAIN&#125; &#123;</span><br><span class="line">	handle_path /ticker/* &#123;</span><br><span class="line">		reverse_proxy bitbank-ticker:80</span><br><span class="line">	&#125;</span><br><span class="line">	handle_path /bot/* &#123;</span><br><span class="line">		reverse_proxy bitbank-grid-api:3000</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>メモリは15MBしか食っていない。1GBのVPSではこれが地味に効く。</p>
+<h2 id="ハマったところ1-さくらのパケットフィルタ"><a href="#ハマったところ1-さくらのパケットフィルタ" class="headerlink" title="ハマったところ1: さくらのパケットフィルタ"></a>ハマったところ1: さくらのパケットフィルタ</h2><p>最初、証明書の取得が延々と失敗した。Let’s Encryptからは<br><code>Timeout during connect (likely firewall problem)</code> が返ってくる。</p>
+<p>原因は<strong>さくらのコントロールパネル側のパケットフィルタ</strong>だった。VPS内のufwではなく、<br>その外側にもう一枚フィルタがあって、初期状態では22番（SSH）しか開いていない。<br>80と443を開けたら一発で通った。</p>
+<p>ufwのほうは有効になっているが、Dockerが公開するポートはufwを迂回するので、<br>こちらにはルールを足す必要がなかった。これも最初は混乱した。</p>
+<h2 id="ハマったところ2-ファイアウォールかレート制限かの切り分け"><a href="#ハマったところ2-ファイアウォールかレート制限かの切り分け" class="headerlink" title="ハマったところ2: ファイアウォールかレート制限かの切り分け"></a>ハマったところ2: ファイアウォールかレート制限かの切り分け</h2><p>Let’s Encryptには<strong>取得回数の制限</strong>があり、失敗を繰り返すと一定時間締め出される。<br>なので「ファイアウォールで届いていない」のか「レート制限で弾かれている」のかを、<br>取得を試さずに判定したかった。</p>
+<p>これはポートを直接叩けば分かる。Caddyを止めた状態で接続して、</p>
+<ul>
+<li><strong>接続拒否（connection refused）</strong> が即座に返る → ポートは開いている。単に何も<br>listenしていないだけ</li>
+<li><strong>タイムアウト</strong> → パケットがそもそも届いていない。ファイアウォール</li>
+</ul>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> socket</span><br><span class="line">s = socket.socket()</span><br><span class="line">s.settimeout(<span class="number">8</span>)</span><br><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    s.connect((<span class="string">&quot;&lt;自分のVPSのホスト名&gt;&quot;</span>, <span class="number">80</span>))</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;listening&quot;</span>)</span><br><span class="line"><span class="keyword">except</span> socket.timeout:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;BLOCKED&quot;</span>)          <span class="comment"># ファイアウォール</span></span><br><span class="line"><span class="keyword">except</span> ConnectionRefusedError:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;open, nothing listening&quot;</span>)   <span class="comment"># 届いている</span></span><br></pre></td></tr></table></figure>
+
+<p>「拒否」と「無応答」は人間には同じ失敗に見えるが、原因は正反対なので、<br>ここを区別できると無駄なACMEの試行を使わずに済む。</p>
+<h2 id="ハマったところ3-Caddyのreloadは黙って失敗する"><a href="#ハマったところ3-Caddyのreloadは黙って失敗する" class="headerlink" title="ハマったところ3: Caddyのreloadは黙って失敗する"></a>ハマったところ3: Caddyのreloadは黙って失敗する</h2><p>設定ファイルが壊れていると、reloadは<strong>何も言わずに現行設定のまま</strong>になる。<br>エラーで止まってくれないので、直したつもりで直っていないことに気づけない。<br>必ずvalidateを挟む。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">docker <span class="built_in">exec</span> edge-caddy caddy validate --config /etc/caddy/Caddyfile \</span><br><span class="line">  &amp;&amp; docker <span class="built_in">exec</span> edge-caddy caddy reload --config /etc/caddy/Caddyfile</span><br></pre></td></tr></table></figure>
+
+<h2 id="自前のDockerレジストリ"><a href="#自前のDockerレジストリ" class="headerlink" title="自前のDockerレジストリ"></a>自前のDockerレジストリ</h2><p>botのイメージをDocker Hubに置くのをやめて、VPS内にレジストリを立てた。<br>使ったのは<a target="_blank" rel="noopener" href="https://zotregistry.dev/">Zot</a>。公式の<code>registry:3</code>ではなくZotにしたのは、</p>
+<ul>
+<li><strong>Web UIがイメージに同梱されている</strong>（<code>registry:3</code>にはUIが無い）</li>
+<li><strong>ガベージコレクションが自動で走る</strong>（<code>registry garbage-collect</code>を手で叩かなくていい）</li>
+</ul>
+<p>の2点。メモリ上限を256MBにしてあり、普段は57MBくらいで落ち着いている。</p>
+<p>Dockerクライアントは常に<code>/v2/...</code>を要求してきて、プレフィックスを設定する手段が<br>無いので、レジストリだけはホストのルートに置く必要がある。他のサービスを<br>サブパスに逃がして、残り全部をレジストリに流す形にした。</p>
+<h2 id="サブパスに置くときの注意"><a href="#サブパスに置くときの注意" class="headerlink" title="サブパスに置くときの注意"></a>サブパスに置くときの注意</h2><p><code>handle_path</code>はプレフィックスを剥がしてから転送するので、中のアプリは<br>自分がサブパスにいることを知らない。これは楽なのだが、<strong>ページ内のアセット参照を<br>相対パスにしておかないと壊れる</strong>。<code>/digest.json</code>と書くとホストのルートを<br>見にいってしまうので、<code>digest.json</code>と書く。</p>
+<p>あと地味な罠として、Caddyの<code>redir</code>は<code>[&lt;matcher&gt;] &lt;to&gt; [&lt;code&gt;]</code>という引数順で、<br>先頭がスラッシュで始まるとそれを<strong>マッチャとして</strong>解釈する。<br><code>/ticker</code>を<code>/ticker/</code>に飛ばしたいときは、マッチャを明示する必要がある。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">redir /ticker /ticker/ 308</span><br></pre></td></tr></table></figure>
+
+<h2 id="移してみて"><a href="#移してみて" class="headerlink" title="移してみて"></a>移してみて</h2><p>EC2のときはAMIを焼いて、セキュリティグループを触って、という作業が毎回発生していた。<br>いまは<code>docker compose up -d</code>で終わる。1GBのVPSに全部収まっているのは、<br>Caddyが15MB、レジストリが57MBと、どれも小さいおかげ。</p>
+<p>次はこの上で動かしているグリッドbotの話を書く。</p>
+
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://sawara7.github.io/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/" data-id="cmvddj505000g03odfgqw35ln" data-title="AWS EC2からさくらのVPSにbot環境を移した" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Caddy/" rel="tag">Caddy</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Docker/" rel="tag">Docker</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/bot/" rel="tag">bot</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS/" rel="tag">さくらのVPS</a></li></ul>
+
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
     <article id="post-2020年8月のポートフォリオ" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
   <div class="article-meta">
     <a href="/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" class="article-date">
@@ -138,7 +422,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sawara7.github.io/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" data-id="cmv33kyoh000063od6ldw2ype" data-title="2020年8月のポートフォリオ" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      <a data-url="https://sawara7.github.io/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" data-id="cmvddj501000003oddfhqe910" data-title="2020年8月のポートフォリオ" class="article-share-link"><span class="fa fa-share">共有</span></a>
       
       
       
@@ -182,7 +466,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sawara7.github.io/2020/07/07/EDINET/" data-id="cmv33kyoi000163odgq1ta43a" data-title="EDINET" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      <a data-url="https://sawara7.github.io/2020/07/07/EDINET/" data-id="cmvddj503000303od4c3464km" data-title="EDINET" class="article-share-link"><span class="fa fa-share">共有</span></a>
       
       
       
@@ -227,7 +511,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sawara7.github.io/2020/07/05/%E6%A0%AA%E5%BC%8F%E4%BC%9A%E7%A4%BE%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6%E8%AA%BF%E3%81%B9%E3%81%9F/" data-id="cmv33kyoo000y63odbx7r2rtl" data-title="株式会社について調べた" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      <a data-url="https://sawara7.github.io/2020/07/05/%E6%A0%AA%E5%BC%8F%E4%BC%9A%E7%A4%BE%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6%E8%AA%BF%E3%81%B9%E3%81%9F/" data-id="cmvddj508001m03od1vr85qdq" data-title="株式会社について調べた" class="article-share-link"><span class="fa fa-share">共有</span></a>
       
       
       
@@ -269,7 +553,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sawara7.github.io/2020/02/29/github%E3%81%A7CI%E6%A7%8B%E7%AF%89/" data-id="cmv33kyok000763od4eqz6y90" data-title="githubでCI構築" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      <a data-url="https://sawara7.github.io/2020/02/29/github%E3%81%A7CI%E6%A7%8B%E7%AF%89/" data-id="cmvddj504000a03od6jmb91a1" data-title="githubでCI構築" class="article-share-link"><span class="fa fa-share">共有</span></a>
       
       
       
@@ -315,7 +599,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sawara7.github.io/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/" data-id="cmv33kyok000563od3aok98j9" data-title="Aws Ec2にbot環境を移行する" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      <a data-url="https://sawara7.github.io/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/" data-id="cmvddj504000503odgrd18c6e" data-title="Aws Ec2にbot環境を移行する" class="article-share-link"><span class="fa fa-share">共有</span></a>
       
       
       
@@ -362,7 +646,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sawara7.github.io/2020/02/05/hexo%E3%81%A7tweet%E3%82%84%E5%A4%96%E9%83%A8%E3%83%96%E3%83%AD%E3%82%B0%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%80%E6%96%B9%E6%B3%95/" data-id="cmv33kyok000863od41ungctc" data-title="Hexoでtweetや外部ブログを埋め込む方法" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      <a data-url="https://sawara7.github.io/2020/02/05/hexo%E3%81%A7tweet%E3%82%84%E5%A4%96%E9%83%A8%E3%83%96%E3%83%AD%E3%82%B0%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%80%E6%96%B9%E6%B3%95/" data-id="cmvddj504000c03odeq334odu" data-title="Hexoでtweetや外部ブログを埋め込む方法" class="article-share-link"><span class="fa fa-share">共有</span></a>
       
       
       
@@ -408,7 +692,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://sawara7.github.io/2020/02/05/Firebase-RealTimeDatabase%E3%82%92Typescript%E3%81%A7%E5%88%A9%E7%94%A8%E3%81%99%E3%82%8B/" data-id="cmv33kyoj000363od8he3cule" data-title="Firebase RealTimeDatabaseをTypescriptで利用する" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      <a data-url="https://sawara7.github.io/2020/02/05/Firebase-RealTimeDatabase%E3%82%92Typescript%E3%81%A7%E5%88%A9%E7%94%A8%E3%81%99%E3%82%8B/" data-id="cmvddj503000403od33uy0bvd" data-title="Firebase RealTimeDatabaseをTypescriptで利用する" class="article-share-link"><span class="fa fa-share">共有</span></a>
       
       
       
@@ -422,94 +706,12 @@
 
 
   
-    <article id="post-TypeScriptを使ってみた" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
-  <div class="article-meta">
-    <a href="/2020/02/01/TypeScript%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%A6%E3%81%BF%E3%81%9F/" class="article-date">
-  <time class="dt-published" datetime="2020-01-31T22:49:35.000Z" itemprop="datePublished">2020-02-01</time>
-</a>
+
+
+  <nav id="page-nav">
     
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="p-name article-title" href="/2020/02/01/TypeScript%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%A6%E3%81%BF%E3%81%9F/">TypeScriptを使ってみた</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="e-content article-entry" itemprop="articleBody">
-      
-        <p><code>npm install typescript</code><br>tsc –initでtsconfig.jsonが生成される<br>tscコマンドでコンパイルできる</p>
-<p>tsconfig.jsonでコンパイルの設定ができる<br>・出力先の設定　&#x2F;dist</p>
-<p>・JSONファイルをそのまま読み込めるようにした<br><a target="_blank" rel="noopener" href="https://qiita.com/nju33/items/15a8b01396a66644c1b3">https://qiita.com/nju33/items/15a8b01396a66644c1b3</a><br>特にこだわりはないので自動で型定義する設定にした</p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://sawara7.github.io/2020/02/01/TypeScript%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%A6%E3%81%BF%E3%81%9F/" data-id="cmv33kyoj000463od828c8u09" data-title="TypeScriptを使ってみた" class="article-share-link"><span class="fa fa-share">共有</span></a>
-      
-      
-      
-  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/JSON/" rel="tag">JSON</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/TypeScript/" rel="tag">TypeScript</a></li></ul>
-
-    </footer>
-  </div>
-  
-</article>
-
-
-
-  
-    <article id="post-ブログはじめました" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
-  <div class="article-meta">
-    <a href="/2020/02/01/%E3%83%96%E3%83%AD%E3%82%B0%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F/" class="article-date">
-  <time class="dt-published" datetime="2020-01-31T21:19:50.000Z" itemprop="datePublished">2020-02-01</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="p-name article-title" href="/2020/02/01/%E3%83%96%E3%83%AD%E3%82%B0%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F/">ブログはじめました</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="e-content article-entry" itemprop="articleBody">
-      
-        <p>HexoとGithub pagesでブログをはじめました。</p>
-<p>Github Pages<br><a target="_blank" rel="noopener" href="https://liginc.co.jp/web/html-css/html/96453">https://liginc.co.jp/web/html-css/html/96453</a></p>
-<p>Hexo<br><a target="_blank" rel="noopener" href="https://liginc.co.jp/web/programming/server/104594">https://liginc.co.jp/web/programming/server/104594</a></p>
-<p>アップロードにてこずった。<br><a target="_blank" rel="noopener" href="http://paki.github.io/2015/05/26/hexo%E3%81%A7%E3%83%96%E3%83%AD%E3%82%B0%E3%81%A4%E3%81%8F%E3%81%A3%E3%81%9F/">http://paki.github.io/2015/05/26/hexoでブログつくった/</a></p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="https://sawara7.github.io/2020/02/01/%E3%83%96%E3%83%AD%E3%82%B0%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F/" data-id="cmv33kyok000a63od05ym6vyw" data-title="ブログはじめました" class="article-share-link"><span class="fa fa-share">共有</span></a>
-      
-      
-      
-  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/HEXO/" rel="tag">HEXO</a></li></ul>
-
-    </footer>
-  </div>
-  
-</article>
-
-
-
-  
-
+    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><a class="extend next" rel="next" href="/page/2/">次へ &raquo;</a>
+  </nav>
 
 </section>
         
@@ -522,7 +724,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">タグ</h3>
     <div class="widget">
-      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/API/" rel="tag">API</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/EDINET/" rel="tag">EDINET</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Firebase/" rel="tag">Firebase</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/HEXO/" rel="tag">HEXO</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/JSON/" rel="tag">JSON</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/TypeScript/" rel="tag">TypeScript</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/aws/" rel="tag">aws</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/ubuntu/" rel="tag">ubuntu</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" rel="tag">ポートフォリオ</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%8A%95%E8%B3%87/" rel="tag">投資</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%A0%AA/" rel="tag">株</a></li></ul>
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/API/" rel="tag">API</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Caddy/" rel="tag">Caddy</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Docker/" rel="tag">Docker</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/EDINET/" rel="tag">EDINET</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Firebase/" rel="tag">Firebase</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/HEXO/" rel="tag">HEXO</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/JSON/" rel="tag">JSON</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/JavaScript/" rel="tag">JavaScript</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/TypeScript/" rel="tag">TypeScript</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/aws/" rel="tag">aws</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/bitbank/" rel="tag">bitbank</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/bot/" rel="tag">bot</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/ubuntu/" rel="tag">ubuntu</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS/" rel="tag">さくらのVPS</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" rel="tag">ポートフォリオ</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%83%AA%E3%83%95%E3%82%A1%E3%82%AF%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0/" rel="tag">リファクタリング</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%8A%95%E8%B3%87/" rel="tag">投資</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%A0%AA/" rel="tag">株</a></li></ul>
     </div>
   </div>
 
@@ -532,7 +734,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">タグクラウド</h3>
     <div class="widget tagcloud">
-      <a href="/tags/API/" style="font-size: 10px;">API</a> <a href="/tags/EDINET/" style="font-size: 10px;">EDINET</a> <a href="/tags/Firebase/" style="font-size: 10px;">Firebase</a> <a href="/tags/HEXO/" style="font-size: 20px;">HEXO</a> <a href="/tags/JSON/" style="font-size: 10px;">JSON</a> <a href="/tags/TypeScript/" style="font-size: 20px;">TypeScript</a> <a href="/tags/aws/" style="font-size: 10px;">aws</a> <a href="/tags/ubuntu/" style="font-size: 10px;">ubuntu</a> <a href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" style="font-size: 10px;">ポートフォリオ</a> <a href="/tags/%E6%8A%95%E8%B3%87/" style="font-size: 10px;">投資</a> <a href="/tags/%E6%A0%AA/" style="font-size: 20px;">株</a>
+      <a href="/tags/API/" style="font-size: 15px;">API</a> <a href="/tags/Caddy/" style="font-size: 10px;">Caddy</a> <a href="/tags/Docker/" style="font-size: 15px;">Docker</a> <a href="/tags/EDINET/" style="font-size: 10px;">EDINET</a> <a href="/tags/Firebase/" style="font-size: 10px;">Firebase</a> <a href="/tags/HEXO/" style="font-size: 15px;">HEXO</a> <a href="/tags/JSON/" style="font-size: 10px;">JSON</a> <a href="/tags/JavaScript/" style="font-size: 10px;">JavaScript</a> <a href="/tags/TypeScript/" style="font-size: 20px;">TypeScript</a> <a href="/tags/aws/" style="font-size: 10px;">aws</a> <a href="/tags/bitbank/" style="font-size: 10px;">bitbank</a> <a href="/tags/bot/" style="font-size: 15px;">bot</a> <a href="/tags/ubuntu/" style="font-size: 10px;">ubuntu</a> <a href="/tags/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS/" style="font-size: 10px;">さくらのVPS</a> <a href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" style="font-size: 10px;">ポートフォリオ</a> <a href="/tags/%E3%83%AA%E3%83%95%E3%82%A1%E3%82%AF%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0/" style="font-size: 10px;">リファクタリング</a> <a href="/tags/%E6%8A%95%E8%B3%87/" style="font-size: 10px;">投資</a> <a href="/tags/%E6%A0%AA/" style="font-size: 15px;">株</a>
     </div>
   </div>
 
@@ -541,7 +743,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">アーカイブ</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/08/">8月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/07/">7月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/02/">2月 2020</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2026/10/">10月 2026</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/08/">8月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/07/">7月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/02/">2月 2020</a></li></ul>
     </div>
   </div>
 
@@ -554,23 +756,23 @@
       <ul>
         
           <li>
+            <a href="/2026/10/18/bitbank%E5%85%A8%E9%8A%98%E6%9F%84%E3%81%AE%E4%BE%A1%E6%A0%BC%E3%83%9C%E3%83%BC%E3%83%89%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F/">bitbank全銘柄の価格ボードをバックエンド無しで作った</a>
+          </li>
+        
+          <li>
+            <a href="/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/">7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった</a>
+          </li>
+        
+          <li>
+            <a href="/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/">AWS EC2からさくらのVPSにbot環境を移した</a>
+          </li>
+        
+          <li>
             <a href="/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/">2020年8月のポートフォリオ</a>
           </li>
         
           <li>
             <a href="/2020/07/07/EDINET/">EDINET</a>
-          </li>
-        
-          <li>
-            <a href="/2020/07/05/%E6%A0%AA%E5%BC%8F%E4%BC%9A%E7%A4%BE%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6%E8%AA%BF%E3%81%B9%E3%81%9F/">株式会社について調べた</a>
-          </li>
-        
-          <li>
-            <a href="/2020/02/29/github%E3%81%A7CI%E6%A7%8B%E7%AF%89/">githubでCI構築</a>
-          </li>
-        
-          <li>
-            <a href="/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/">Aws Ec2にbot環境を移行する</a>
           </li>
         
       </ul>

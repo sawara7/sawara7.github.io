@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった | 週末自由研究</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="bitbankのグリッドbotは、長いあいだ7つのリポジトリに分かれていた。共通処理をライブラリとして切り出すのは良い習慣だと思っていたのだが、個人開発の規模でやるとデプロイのたびに面倒を払うことになっていた。 まとめた結果がこれ。    元のリポジトリ 移動先 行数    bot-framework src&#x2F;framework&#x2F; 921   node-bitbankcc src&#x2F;bitbank&#x2F;">
+<meta property="og:type" content="article">
+<meta property="og:title" content="7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった">
+<meta property="og:url" content="https://sawara7.github.io/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/index.html">
+<meta property="og:site_name" content="週末自由研究">
+<meta property="og:description" content="bitbankのグリッドbotは、長いあいだ7つのリポジトリに分かれていた。共通処理をライブラリとして切り出すのは良い習慣だと思っていたのだが、個人開発の規模でやるとデプロイのたびに面倒を払うことになっていた。 まとめた結果がこれ。    元のリポジトリ 移動先 行数    bot-framework src&#x2F;framework&#x2F; 921   node-bitbankcc src&#x2F;bitbank&#x2F;">
+<meta property="og:locale" content="ja_JP">
+<meta property="article:published_time" content="2026-10-17T13:10:00.000Z">
+<meta property="article:modified_time" content="2026-10-18T05:16:27.851Z">
+<meta property="article:author" content="sawara7">
+<meta property="article:tag" content="TypeScript">
+<meta property="article:tag" content="Docker">
+<meta property="article:tag" content="bot">
+<meta property="article:tag" content="リファクタリング">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="/atom.xml" title="週末自由研究" type="application/atom+xml">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+    
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-source-code-pro@0.0.71/index.min.css">
+
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+  
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fork-awesome@1.2.0/css/fork-awesome.min.css">
+
+<!-- hexo injector head_end start --><style>
+.referral-card{border:1px solid #d8dde3;border-radius:8px;padding:16px 18px;margin:28px 0;background:#fbfcfd}
+.referral-badge{display:inline-block;font-size:11px;line-height:1;padding:4px 7px;border-radius:3px;background:#55606b;color:#fff;letter-spacing:.04em}
+.referral-name{margin:10px 0 0;font-weight:700;font-size:17px}
+.referral-reward{margin-left:8px;font-weight:400;font-size:13px;color:#0b7a46}
+.referral-note{margin:6px 0 0;font-size:14px;color:#55606b}
+.referral-cta{display:inline-block;margin-top:14px;padding:9px 18px;border-radius:5px;background:#1668c1;color:#fff;font-size:14px;font-weight:700;text-decoration:none}
+.referral-cta:hover{background:#12559f}
+.referral-disclosure{border-left:3px solid #c9ced4;padding:8px 12px;margin:0 0 22px;font-size:13px;color:#55606b}
+@media (prefers-color-scheme:dark){
+.referral-card{background:#1b1f24;border-color:#343b43}
+.referral-note,.referral-disclosure{color:#9aa4ae}
+}
+</style><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">週末自由研究</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">This Week I Learned</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"><span class="fa fa-bars"></span></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+        
+          <a class="nav-icon" href="/atom.xml" title="RSSフィード"><span class="fa fa-rss"></span></a>
+        
+        <a class="nav-icon nav-search-btn" title="検索"><span class="fa fa-search"></span></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="検索"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://sawara7.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="post-7つのリポジトリを1つにまとめた" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/" class="article-date">
+  <time class="dt-published" datetime="2026-10-17T13:10:00.000Z" itemprop="datePublished">2026-10-17</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="p-name article-title" itemprop="headline name">
+      7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>bitbankのグリッドbotは、長いあいだ7つのリポジトリに分かれていた。<br>共通処理をライブラリとして切り出すのは良い習慣だと思っていたのだが、<br>個人開発の規模でやると<strong>デプロイのたびに面倒を払う</strong>ことになっていた。</p>
+<p>まとめた結果がこれ。</p>
+<table>
+<thead>
+<tr>
+<th>元のリポジトリ</th>
+<th>移動先</th>
+<th>行数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>bot-framework</code></td>
+<td><code>src/framework/</code></td>
+<td>921</td>
+</tr>
+<tr>
+<td><code>node-bitbankcc</code></td>
+<td><code>src/bitbank/</code></td>
+<td>595</td>
+</tr>
+<tr>
+<td><code>bot-bitbank</code></td>
+<td><code>src/bot/</code></td>
+<td>428</td>
+</tr>
+<tr>
+<td><code>utils-trade</code></td>
+<td><code>src/trade/</code></td>
+<td>283</td>
+</tr>
+<tr>
+<td><code>utils-mongodb</code></td>
+<td><code>src/db/</code></td>
+<td>272</td>
+</tr>
+<tr>
+<td><code>utils-general</code></td>
+<td><code>src/utils/</code></td>
+<td>198</td>
+</tr>
+<tr>
+<td><code>logic-namping</code></td>
+<td><code>src/logic/</code></td>
+<td>101</td>
+</tr>
+</tbody></table>
+<p>合計2,800行。1つのリポジトリに収まる量だった。</p>
+<h2 id="何が面倒だったか"><a href="#何が面倒だったか" class="headerlink" title="何が面倒だったか"></a>何が面倒だったか</h2><p>依存をこう書いていた。</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">&quot;dependencies&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;bot-framework&quot;</span><span class="punctuation">:</span> <span class="string">&quot;github:sawara7/bot-framework&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;utils-trade&quot;</span><span class="punctuation">:</span> <span class="string">&quot;github:sawara7/utils-trade&quot;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>privateリポジトリをgithub:で参照すると、<code>npm install</code>に<strong>認証が要る</strong>。<br>ローカルでは自分のSSH鍵が効くので気づかないが、Dockerのビルドコンテナの中には<br>鍵が無い。だからビルドのたびに鍵を渡す必要があった。</p>
+<figure class="highlight dockerfile"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">RUN</span><span class="language-bash"> --mount=<span class="built_in">type</span>=ssh npm ci</span></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">build:</span></span><br><span class="line">  <span class="attr">ssh:</span> <span class="string">default</span></span><br></pre></td></tr></table></figure>
+
+<p>これでCIも面倒になるし、ビルド環境を変えるたびに鍵の受け渡しを考えることになる。<br><strong><code>github:sawara7/*</code>の依存が全部消えた結果、<code>--mount=type=ssh</code>も<code>build.ssh</code>も<br>要らなくなった。</strong> ビルドがただの<code>npm ci</code>に戻った。</p>
+<p>ライブラリを分けること自体が悪いのではなく、「他人も使うのか？」を考えずに<br>分けたのが良くなかった。実際には全部このbotからしか呼ばれていなかった。</p>
+<h2 id="ついでに見つかったバグ"><a href="#ついでに見つかったバグ" class="headerlink" title="ついでに見つかったバグ"></a>ついでに見つかったバグ</h2><p>1か所に集めると全体を通して読めるようになって、長年気づかなかったバグが出てきた。<br>いくつか挙げる。</p>
+<h3 id="10-pricePrecision-が累乗ではなかった"><a href="#10-pricePrecision-が累乗ではなかった" class="headerlink" title="10^pricePrecision が累乗ではなかった"></a><code>10^pricePrecision</code> が累乗ではなかった</h3><figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> precision = <span class="number">10</span> ^ pricePrecision;</span><br></pre></td></tr></table></figure>
+
+<p>JavaScriptの<code>^</code>は<strong>ビットXOR</strong>であって累乗ではない。<code>10^0</code>は10、<code>10^2</code>は8になる。<br>累乗は<code>**</code>か<code>Math.pow()</code>。</p>
+<p>この値はtickerの精度として渡されていた。ずっと動いて「いた」のは、<br>結果的に妙な値でも処理が通ってしまっていたから。累乗のつもりで<code>^</code>を書くのは<br>他言語から来ると本当にやりがちで、しかもエラーにならないので残り続ける。</p>
+<h3 id="bidとaskが逆だった"><a href="#bidとaskが逆だった" class="headerlink" title="bidとaskが逆だった"></a>bidとaskが逆だった</h3><figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">bid</span>: mid + precision,</span><br><span class="line"><span class="attr">ask</span>: mid - precision,</span><br></pre></td></tr></table></figure>
+
+<p>買値が売値より<strong>高い</strong>状態になっていた。損切りの方向判定が反転する。</p>
+<p>これが表に出ていなかったのは、<code>losscutRate: 0</code>で損切りロジックそのものが<br>動いていなかったから。損切りを有効にした瞬間に踏む地雷だった。<br>ついでに、実際のスプレッドを捨ててmid±precisionに潰していたのもやめて、<br>板をそのまま使うようにした。</p>
+<h3 id="決済注文が建玉側の注文種別を書いていた"><a href="#決済注文が建玉側の注文種別を書いていた" class="headerlink" title="決済注文が建玉側の注文種別を書いていた"></a>決済注文が建玉側の注文種別を書いていた</h3><p><code>getCloseOrderRequest</code>の中で<code>openOrderType</code>を読んでいた。<br><code>getOpenOrderRequest</code>からのコピペで、変数名だけ直し忘れたやつ。</p>
+<h3 id="最小ロットのチェックが存在しなかった"><a href="#最小ロットのチェックが存在しなかった" class="headerlink" title="最小ロットのチェックが存在しなかった"></a>最小ロットのチェックが存在しなかった</h3><p>設定に<code>minSize</code>という項目があるのに、<strong>誰も読んでいなかった</strong>。<br>予算が足りない段では数量が0に切り捨てられ、取引所に弾かれて<code>success: false</code>が<br>返るだけ。理由はログに残らない。</p>
+<p>症状としては「なぜか上の段だけ約定しない」という形で出る。原因が分からないまま<br>何年か放置していた。発注前にチェックして、足りなければ必要な予算とあわせて<br>ログに出すようにした。UIにも「全段が最小ロットを満たすのに必要な予算」を<br>表示するようにしている。</p>
+<h3 id="予算取得が毎ループ走っていて、失敗すると全部止まっていた"><a href="#予算取得が毎ループ走っていて、失敗すると全部止まっていた" class="headerlink" title="予算取得が毎ループ走っていて、失敗すると全部止まっていた"></a>予算取得が毎ループ走っていて、失敗すると全部止まっていた</h3><p>残高取得はprivate APIを1回、保有銘柄ごとにpublic APIを1回呼ぶ。<br>これがbotループの<strong>毎イテレーション</strong>で、しかも約定検知より<strong>前</strong>にあった。</p>
+<p>つまり、保有している無関係な銘柄のticker取得が一度失敗しただけで、<br>その回の約定検知ごとスキップされていた。60秒キャッシュにして、<br>失敗時は直近の値を使い続けるようにした。</p>
+<h3 id="損益に約定価格を使っていなかった"><a href="#損益に約定価格を使っていなかった" class="headerlink" title="損益に約定価格を使っていなかった"></a>損益に約定価格を使っていなかった</h3><p>決済済みの往復の損益に<code>getUnrealizedPL</code>を使っていた。これは<code>ticker.bid</code>、<br>つまり<strong>その時点の板の価格</strong>で評価する関数で、建玉の評価には正しいが、<br>決済済みの取引に使うと「約定を検知したときに相場がたまたまどこにいたか」を<br>記録することになる。</p>
+<p>決済の実際の約定値は<code>pos.closePrice</code>に入っているのに使われていなかった。<br>2つの約定価格から計算する<code>getRealizedPL</code>を足した。</p>
+<p>あわせて、<code>cumulativePL</code>に純額しか入っていなかったのも直した。これだと<br>「グリッドが稼いだ分」と「手数料で払った分」が分離できない。<br>粗利・建玉手数料・決済手数料・建値・決済値・数量・段番号を別々に保存している。<br>古いドキュメントも読めるよう、追加したフィールドは全部optionalにした。</p>
+<h2 id="まとめ"><a href="#まとめ" class="headerlink" title="まとめ"></a>まとめ</h2><p>リポジトリを分けると、<strong>全体を通して読む機会が無くなる</strong>。<br>境界をまたいだバグ（bidとaskが逆、使われていない設定項目）は、<br>分かれている限り見つからない。</p>
+<p>2,800行なら1つでいい、というのが結論。</p>
+<p>次は、このbotが叩いているbitbankのAPIで作った価格ボードの話を書く。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://sawara7.github.io/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/" data-id="cmvddj502000103od75j0fypv" data-title="7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Docker/" rel="tag">Docker</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/TypeScript/" rel="tag">TypeScript</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/bot/" rel="tag">bot</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E3%83%AA%E3%83%95%E3%82%A1%E3%82%AF%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0/" rel="tag">リファクタリング</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2026/10/18/bitbank%E5%85%A8%E9%8A%98%E6%9F%84%E3%81%AE%E4%BE%A1%E6%A0%BC%E3%83%9C%E3%83%BC%E3%83%89%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">次の記事</strong>
+      <div class="article-nav-title">
+        
+          bitbank全銘柄の価格ボードをバックエンド無しで作った
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">前の記事</strong>
+      <div class="article-nav-title">AWS EC2からさくらのVPSにbot環境を移した</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">タグ</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/API/" rel="tag">API</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Caddy/" rel="tag">Caddy</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Docker/" rel="tag">Docker</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/EDINET/" rel="tag">EDINET</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Firebase/" rel="tag">Firebase</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/HEXO/" rel="tag">HEXO</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/JSON/" rel="tag">JSON</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/JavaScript/" rel="tag">JavaScript</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/TypeScript/" rel="tag">TypeScript</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/aws/" rel="tag">aws</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/bitbank/" rel="tag">bitbank</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/bot/" rel="tag">bot</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/ubuntu/" rel="tag">ubuntu</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS/" rel="tag">さくらのVPS</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" rel="tag">ポートフォリオ</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%83%AA%E3%83%95%E3%82%A1%E3%82%AF%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0/" rel="tag">リファクタリング</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%8A%95%E8%B3%87/" rel="tag">投資</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%A0%AA/" rel="tag">株</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">タグクラウド</h3>
+    <div class="widget tagcloud">
+      <a href="/tags/API/" style="font-size: 15px;">API</a> <a href="/tags/Caddy/" style="font-size: 10px;">Caddy</a> <a href="/tags/Docker/" style="font-size: 15px;">Docker</a> <a href="/tags/EDINET/" style="font-size: 10px;">EDINET</a> <a href="/tags/Firebase/" style="font-size: 10px;">Firebase</a> <a href="/tags/HEXO/" style="font-size: 15px;">HEXO</a> <a href="/tags/JSON/" style="font-size: 10px;">JSON</a> <a href="/tags/JavaScript/" style="font-size: 10px;">JavaScript</a> <a href="/tags/TypeScript/" style="font-size: 20px;">TypeScript</a> <a href="/tags/aws/" style="font-size: 10px;">aws</a> <a href="/tags/bitbank/" style="font-size: 10px;">bitbank</a> <a href="/tags/bot/" style="font-size: 15px;">bot</a> <a href="/tags/ubuntu/" style="font-size: 10px;">ubuntu</a> <a href="/tags/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS/" style="font-size: 10px;">さくらのVPS</a> <a href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" style="font-size: 10px;">ポートフォリオ</a> <a href="/tags/%E3%83%AA%E3%83%95%E3%82%A1%E3%82%AF%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0/" style="font-size: 10px;">リファクタリング</a> <a href="/tags/%E6%8A%95%E8%B3%87/" style="font-size: 10px;">投資</a> <a href="/tags/%E6%A0%AA/" style="font-size: 15px;">株</a>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">アーカイブ</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2026/10/">10月 2026</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/08/">8月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/07/">7月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/02/">2月 2020</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">最近の投稿</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2026/10/18/bitbank%E5%85%A8%E9%8A%98%E6%9F%84%E3%81%AE%E4%BE%A1%E6%A0%BC%E3%83%9C%E3%83%BC%E3%83%89%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F/">bitbank全銘柄の価格ボードをバックエンド無しで作った</a>
+          </li>
+        
+          <li>
+            <a href="/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/">7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった</a>
+          </li>
+        
+          <li>
+            <a href="/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/">AWS EC2からさくらのVPSにbot環境を移した</a>
+          </li>
+        
+          <li>
+            <a href="/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/">2020年8月のポートフォリオ</a>
+          </li>
+        
+          <li>
+            <a href="/2020/07/07/EDINET/">EDINET</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2026 sawara7<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.6.4.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>

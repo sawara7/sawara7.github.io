@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>AWS EC2からさくらのVPSにbot環境を移した | 週末自由研究</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="6年前にAWS EC2にbot環境を移行するという記事を書いた。あれ以来ずっとEC2で動かしていたが、台数が増えるにつれて毎月の請求が効いてきたので、さくらのVPSの月額千円ちょっとのプランに引っ越した。メモリ1GBでbot3本とレジストリとリバースプロキシが全部載っている。 せっかくなので、ただ移すのではなく構成を整理した。 構成1234567インターネット   │ 443   ▼ Caddy（">
+<meta property="og:type" content="article">
+<meta property="og:title" content="AWS EC2からさくらのVPSにbot環境を移した">
+<meta property="og:url" content="https://sawara7.github.io/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/index.html">
+<meta property="og:site_name" content="週末自由研究">
+<meta property="og:description" content="6年前にAWS EC2にbot環境を移行するという記事を書いた。あれ以来ずっとEC2で動かしていたが、台数が増えるにつれて毎月の請求が効いてきたので、さくらのVPSの月額千円ちょっとのプランに引っ越した。メモリ1GBでbot3本とレジストリとリバースプロキシが全部載っている。 せっかくなので、ただ移すのではなく構成を整理した。 構成1234567インターネット   │ 443   ▼ Caddy（">
+<meta property="og:locale" content="ja_JP">
+<meta property="article:published_time" content="2026-10-16T12:30:00.000Z">
+<meta property="article:modified_time" content="2026-10-18T05:15:54.782Z">
+<meta property="article:author" content="sawara7">
+<meta property="article:tag" content="Docker">
+<meta property="article:tag" content="bot">
+<meta property="article:tag" content="さくらのVPS">
+<meta property="article:tag" content="Caddy">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="/atom.xml" title="週末自由研究" type="application/atom+xml">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+    
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-source-code-pro@0.0.71/index.min.css">
+
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+  
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fork-awesome@1.2.0/css/fork-awesome.min.css">
+
+<!-- hexo injector head_end start --><style>
+.referral-card{border:1px solid #d8dde3;border-radius:8px;padding:16px 18px;margin:28px 0;background:#fbfcfd}
+.referral-badge{display:inline-block;font-size:11px;line-height:1;padding:4px 7px;border-radius:3px;background:#55606b;color:#fff;letter-spacing:.04em}
+.referral-name{margin:10px 0 0;font-weight:700;font-size:17px}
+.referral-reward{margin-left:8px;font-weight:400;font-size:13px;color:#0b7a46}
+.referral-note{margin:6px 0 0;font-size:14px;color:#55606b}
+.referral-cta{display:inline-block;margin-top:14px;padding:9px 18px;border-radius:5px;background:#1668c1;color:#fff;font-size:14px;font-weight:700;text-decoration:none}
+.referral-cta:hover{background:#12559f}
+.referral-disclosure{border-left:3px solid #c9ced4;padding:8px 12px;margin:0 0 22px;font-size:13px;color:#55606b}
+@media (prefers-color-scheme:dark){
+.referral-card{background:#1b1f24;border-color:#343b43}
+.referral-note,.referral-disclosure{color:#9aa4ae}
+}
+</style><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">週末自由研究</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">This Week I Learned</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"><span class="fa fa-bars"></span></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+        
+          <a class="nav-icon" href="/atom.xml" title="RSSフィード"><span class="fa fa-rss"></span></a>
+        
+        <a class="nav-icon nav-search-btn" title="検索"><span class="fa fa-search"></span></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="検索"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://sawara7.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="post-さくらのVPSにbot環境を移した" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/" class="article-date">
+  <time class="dt-published" datetime="2026-10-16T12:30:00.000Z" itemprop="datePublished">2026-10-16</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="p-name article-title" itemprop="headline name">
+      AWS EC2からさくらのVPSにbot環境を移した
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>6年前に<a href="/2020/02/15/aws-ec2%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E8%A1%8C%E3%81%99%E3%82%8B/">AWS EC2にbot環境を移行する</a>という記事を書いた。<br>あれ以来ずっとEC2で動かしていたが、台数が増えるにつれて毎月の請求が効いてきたので、<br>さくらのVPSの月額千円ちょっとのプランに引っ越した。メモリ1GBでbot3本とレジストリと<br>リバースプロキシが全部載っている。</p>
+<p>せっかくなので、ただ移すのではなく構成を整理した。</p>
+<h2 id="構成"><a href="#構成" class="headerlink" title="構成"></a>構成</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">インターネット</span><br><span class="line">   │ 443</span><br><span class="line">   ▼</span><br><span class="line"> Caddy（TLS終端・振り分け）</span><br><span class="line">   ├─ /ticker/ → 価格ボード（静的）</span><br><span class="line">   ├─ /bot/    → グリッドbotの設定UI</span><br><span class="line">   └─ /        → 自前のDockerレジストリ</span><br></pre></td></tr></table></figure>
+
+<p>全部Dockerコンテナで、<code>edge</code> という名前のDockerネットワークを1つ作って、その上に乗せている。</p>
+<h2 id="Caddyにした理由"><a href="#Caddyにした理由" class="headerlink" title="Caddyにした理由"></a>Caddyにした理由</h2><p>nginxでもよかったが、<strong>Let’s Encryptの証明書取得と更新を何も書かずにやってくれる</strong>のが<br>決め手だった。設定ファイルにドメインを書くだけで証明書が降ってくる。certbotのcronも<br>要らないし、更新忘れで落とすこともない。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">&#123;$SITE_DOMAIN&#125; &#123;</span><br><span class="line">	handle_path /ticker/* &#123;</span><br><span class="line">		reverse_proxy bitbank-ticker:80</span><br><span class="line">	&#125;</span><br><span class="line">	handle_path /bot/* &#123;</span><br><span class="line">		reverse_proxy bitbank-grid-api:3000</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>メモリは15MBしか食っていない。1GBのVPSではこれが地味に効く。</p>
+<h2 id="ハマったところ1-さくらのパケットフィルタ"><a href="#ハマったところ1-さくらのパケットフィルタ" class="headerlink" title="ハマったところ1: さくらのパケットフィルタ"></a>ハマったところ1: さくらのパケットフィルタ</h2><p>最初、証明書の取得が延々と失敗した。Let’s Encryptからは<br><code>Timeout during connect (likely firewall problem)</code> が返ってくる。</p>
+<p>原因は<strong>さくらのコントロールパネル側のパケットフィルタ</strong>だった。VPS内のufwではなく、<br>その外側にもう一枚フィルタがあって、初期状態では22番（SSH）しか開いていない。<br>80と443を開けたら一発で通った。</p>
+<p>ufwのほうは有効になっているが、Dockerが公開するポートはufwを迂回するので、<br>こちらにはルールを足す必要がなかった。これも最初は混乱した。</p>
+<h2 id="ハマったところ2-ファイアウォールかレート制限かの切り分け"><a href="#ハマったところ2-ファイアウォールかレート制限かの切り分け" class="headerlink" title="ハマったところ2: ファイアウォールかレート制限かの切り分け"></a>ハマったところ2: ファイアウォールかレート制限かの切り分け</h2><p>Let’s Encryptには<strong>取得回数の制限</strong>があり、失敗を繰り返すと一定時間締め出される。<br>なので「ファイアウォールで届いていない」のか「レート制限で弾かれている」のかを、<br>取得を試さずに判定したかった。</p>
+<p>これはポートを直接叩けば分かる。Caddyを止めた状態で接続して、</p>
+<ul>
+<li><strong>接続拒否（connection refused）</strong> が即座に返る → ポートは開いている。単に何も<br>listenしていないだけ</li>
+<li><strong>タイムアウト</strong> → パケットがそもそも届いていない。ファイアウォール</li>
+</ul>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> socket</span><br><span class="line">s = socket.socket()</span><br><span class="line">s.settimeout(<span class="number">8</span>)</span><br><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    s.connect((<span class="string">&quot;&lt;自分のVPSのホスト名&gt;&quot;</span>, <span class="number">80</span>))</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;listening&quot;</span>)</span><br><span class="line"><span class="keyword">except</span> socket.timeout:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;BLOCKED&quot;</span>)          <span class="comment"># ファイアウォール</span></span><br><span class="line"><span class="keyword">except</span> ConnectionRefusedError:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;open, nothing listening&quot;</span>)   <span class="comment"># 届いている</span></span><br></pre></td></tr></table></figure>
+
+<p>「拒否」と「無応答」は人間には同じ失敗に見えるが、原因は正反対なので、<br>ここを区別できると無駄なACMEの試行を使わずに済む。</p>
+<h2 id="ハマったところ3-Caddyのreloadは黙って失敗する"><a href="#ハマったところ3-Caddyのreloadは黙って失敗する" class="headerlink" title="ハマったところ3: Caddyのreloadは黙って失敗する"></a>ハマったところ3: Caddyのreloadは黙って失敗する</h2><p>設定ファイルが壊れていると、reloadは<strong>何も言わずに現行設定のまま</strong>になる。<br>エラーで止まってくれないので、直したつもりで直っていないことに気づけない。<br>必ずvalidateを挟む。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">docker <span class="built_in">exec</span> edge-caddy caddy validate --config /etc/caddy/Caddyfile \</span><br><span class="line">  &amp;&amp; docker <span class="built_in">exec</span> edge-caddy caddy reload --config /etc/caddy/Caddyfile</span><br></pre></td></tr></table></figure>
+
+<h2 id="自前のDockerレジストリ"><a href="#自前のDockerレジストリ" class="headerlink" title="自前のDockerレジストリ"></a>自前のDockerレジストリ</h2><p>botのイメージをDocker Hubに置くのをやめて、VPS内にレジストリを立てた。<br>使ったのは<a target="_blank" rel="noopener" href="https://zotregistry.dev/">Zot</a>。公式の<code>registry:3</code>ではなくZotにしたのは、</p>
+<ul>
+<li><strong>Web UIがイメージに同梱されている</strong>（<code>registry:3</code>にはUIが無い）</li>
+<li><strong>ガベージコレクションが自動で走る</strong>（<code>registry garbage-collect</code>を手で叩かなくていい）</li>
+</ul>
+<p>の2点。メモリ上限を256MBにしてあり、普段は57MBくらいで落ち着いている。</p>
+<p>Dockerクライアントは常に<code>/v2/...</code>を要求してきて、プレフィックスを設定する手段が<br>無いので、レジストリだけはホストのルートに置く必要がある。他のサービスを<br>サブパスに逃がして、残り全部をレジストリに流す形にした。</p>
+<h2 id="サブパスに置くときの注意"><a href="#サブパスに置くときの注意" class="headerlink" title="サブパスに置くときの注意"></a>サブパスに置くときの注意</h2><p><code>handle_path</code>はプレフィックスを剥がしてから転送するので、中のアプリは<br>自分がサブパスにいることを知らない。これは楽なのだが、<strong>ページ内のアセット参照を<br>相対パスにしておかないと壊れる</strong>。<code>/digest.json</code>と書くとホストのルートを<br>見にいってしまうので、<code>digest.json</code>と書く。</p>
+<p>あと地味な罠として、Caddyの<code>redir</code>は<code>[&lt;matcher&gt;] &lt;to&gt; [&lt;code&gt;]</code>という引数順で、<br>先頭がスラッシュで始まるとそれを<strong>マッチャとして</strong>解釈する。<br><code>/ticker</code>を<code>/ticker/</code>に飛ばしたいときは、マッチャを明示する必要がある。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">redir /ticker /ticker/ 308</span><br></pre></td></tr></table></figure>
+
+<h2 id="移してみて"><a href="#移してみて" class="headerlink" title="移してみて"></a>移してみて</h2><p>EC2のときはAMIを焼いて、セキュリティグループを触って、という作業が毎回発生していた。<br>いまは<code>docker compose up -d</code>で終わる。1GBのVPSに全部収まっているのは、<br>Caddyが15MB、レジストリが57MBと、どれも小さいおかげ。</p>
+<p>次はこの上で動かしているグリッドbotの話を書く。</p>
+
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://sawara7.github.io/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/" data-id="cmvddj505000g03odfgqw35ln" data-title="AWS EC2からさくらのVPSにbot環境を移した" class="article-share-link"><span class="fa fa-share">共有</span></a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Caddy/" rel="tag">Caddy</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Docker/" rel="tag">Docker</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/bot/" rel="tag">bot</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS/" rel="tag">さくらのVPS</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">次の記事</strong>
+      <div class="article-nav-title">
+        
+          7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">前の記事</strong>
+      <div class="article-nav-title">2020年8月のポートフォリオ</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">タグ</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/API/" rel="tag">API</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Caddy/" rel="tag">Caddy</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Docker/" rel="tag">Docker</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/EDINET/" rel="tag">EDINET</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Firebase/" rel="tag">Firebase</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/HEXO/" rel="tag">HEXO</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/JSON/" rel="tag">JSON</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/JavaScript/" rel="tag">JavaScript</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/TypeScript/" rel="tag">TypeScript</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/aws/" rel="tag">aws</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/bitbank/" rel="tag">bitbank</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/bot/" rel="tag">bot</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/ubuntu/" rel="tag">ubuntu</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS/" rel="tag">さくらのVPS</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" rel="tag">ポートフォリオ</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E3%83%AA%E3%83%95%E3%82%A1%E3%82%AF%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0/" rel="tag">リファクタリング</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%8A%95%E8%B3%87/" rel="tag">投資</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%A0%AA/" rel="tag">株</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">タグクラウド</h3>
+    <div class="widget tagcloud">
+      <a href="/tags/API/" style="font-size: 15px;">API</a> <a href="/tags/Caddy/" style="font-size: 10px;">Caddy</a> <a href="/tags/Docker/" style="font-size: 15px;">Docker</a> <a href="/tags/EDINET/" style="font-size: 10px;">EDINET</a> <a href="/tags/Firebase/" style="font-size: 10px;">Firebase</a> <a href="/tags/HEXO/" style="font-size: 15px;">HEXO</a> <a href="/tags/JSON/" style="font-size: 10px;">JSON</a> <a href="/tags/JavaScript/" style="font-size: 10px;">JavaScript</a> <a href="/tags/TypeScript/" style="font-size: 20px;">TypeScript</a> <a href="/tags/aws/" style="font-size: 10px;">aws</a> <a href="/tags/bitbank/" style="font-size: 10px;">bitbank</a> <a href="/tags/bot/" style="font-size: 15px;">bot</a> <a href="/tags/ubuntu/" style="font-size: 10px;">ubuntu</a> <a href="/tags/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS/" style="font-size: 10px;">さくらのVPS</a> <a href="/tags/%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/" style="font-size: 10px;">ポートフォリオ</a> <a href="/tags/%E3%83%AA%E3%83%95%E3%82%A1%E3%82%AF%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0/" style="font-size: 10px;">リファクタリング</a> <a href="/tags/%E6%8A%95%E8%B3%87/" style="font-size: 10px;">投資</a> <a href="/tags/%E6%A0%AA/" style="font-size: 15px;">株</a>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">アーカイブ</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2026/10/">10月 2026</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/08/">8月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/07/">7月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/02/">2月 2020</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">最近の投稿</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2026/10/18/bitbank%E5%85%A8%E9%8A%98%E6%9F%84%E3%81%AE%E4%BE%A1%E6%A0%BC%E3%83%9C%E3%83%BC%E3%83%89%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F/">bitbank全銘柄の価格ボードをバックエンド無しで作った</a>
+          </li>
+        
+          <li>
+            <a href="/2026/10/17/7%E3%81%A4%E3%81%AE%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%921%E3%81%A4%E3%81%AB%E3%81%BE%E3%81%A8%E3%82%81%E3%81%9F/">7つのリポジトリを1つにまとめたらビルドにSSH鍵が要らなくなった</a>
+          </li>
+        
+          <li>
+            <a href="/2026/10/16/%E3%81%95%E3%81%8F%E3%82%89%E3%81%AEVPS%E3%81%ABbot%E7%92%B0%E5%A2%83%E3%82%92%E7%A7%BB%E3%81%97%E3%81%9F/">AWS EC2からさくらのVPSにbot環境を移した</a>
+          </li>
+        
+          <li>
+            <a href="/2020/08/16/2020%E5%B9%B48%E6%9C%88%E3%81%AE%E3%83%9D%E3%83%BC%E3%83%88%E3%83%95%E3%82%A9%E3%83%AA%E3%82%AA/">2020年8月のポートフォリオ</a>
+          </li>
+        
+          <li>
+            <a href="/2020/07/07/EDINET/">EDINET</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2026 sawara7<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.6.4.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>
